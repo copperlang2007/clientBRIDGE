@@ -1,0 +1,289 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    // Collection: users
+    // Fields: uid (string), email (string), displayName (string), role (string: admin|client), createdAt (timestamp)
+    //
+    // Collection: projects
+    // Fields: id (string), title (string), clientUid (string), status (string), deliverables (list), createdAt (timestamp)
+    //
+    // Collection: invoices
+    // Fields: id (string), projectId (string), clientUid (string), amount (number), status (string), createdAt (timestamp)
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() && (
+        request.auth.token.email == "Lang@theartificialbridge.com" ||
+        request.auth.token.email == "mlang@team-iia.com" ||
+        request.auth.token.email == "admin@demo.com" ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
+        )
+      );
+    }
+
+    function hasPermission(permission) {
+      return isAuthenticated() && (
+        request.auth.token.email == "Lang@theartificialbridge.com" ||
+        request.auth.token.email == "mlang@team-iia.com" ||
+        request.auth.token.email == "admin@demo.com" ||
+        (
+          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+          (
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+            (
+              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role != 'client' &&
+              exists(/databases/$(database)/documents/roles/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)) &&
+              get(/databases/$(database)/documents/roles/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)).data.permissions[permission] == true
+            )
+          )
+        )
+      );
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isDocOwner() {
+      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'role']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.role is string &&
+             (!('displayName' in data) || (data.displayName is string && data.displayName.size() <= 120)) &&
+             (!('photoURL' in data) || (data.photoURL is string && data.photoURL.size() <= 2000000)) &&
+             (!('phoneNumber' in data) || (data.phoneNumber is string && data.phoneNumber.size() <= 60)) &&
+             (!('company' in data) || (data.company is string && data.company.size() <= 120)) &&
+             (!('jobTitle' in data) || (data.jobTitle is string && data.jobTitle.size() <= 120)) &&
+             (!('location' in data) || (data.location is string && data.location.size() <= 120)) &&
+             (!('website' in data) || (data.website is string && data.website.size() <= 300)) &&
+             (!('bio' in data) || (data.bio is string && data.bio.size() <= 2000)) &&
+             (!('createdAt' in data) || data.createdAt is string) &&
+             (!('updatedAt' in data) || data.updatedAt is string);
+    }
+
+    function isValidRole(data) {
+      return data.keys().hasAll(['name', 'permissions']) &&
+             data.name is string &&
+             data.permissions is map &&
+             data.permissions.keys().hasAll(['manageSOWs', 'manageProposals', 'manageInvoices', 'manageProjects', 'manageRoles', 'viewAnalytics']);
+    }
+
+    function isValidProject(data) {
+      return data.keys().hasAll(['title', 'clientUid', 'status']) &&
+             data.title is string && data.title.size() < 200 &&
+             data.clientUid is string &&
+             (!('sowId' in data) || data.sowId is string) &&
+             data.status in ['draft', 'active', 'completed'];
+    }
+
+    function isValidInvoice(data) {
+      return data.keys().hasAll(['projectId', 'clientUid', 'amount', 'status', 'dueDate']) &&
+             data.amount is number && data.amount > 0 &&
+             data.status in ['unpaid', 'paid'] &&
+             data.dueDate is string;
+    }
+
+    function isValidNotification(data) {
+      return data.keys().hasAll(['userId', 'title', 'message', 'type', 'read']) &&
+             data.userId is string &&
+             data.title is string &&
+             data.message is string &&
+             data.type in ['reminder', 'update', 'alert'] &&
+             data.read is bool;
+    }
+
+    function isValidSOW(data) {
+      return data.keys().hasAll(['projectId', 'clientUid', 'content', 'status']) &&
+             data.content is string && data.content.size() < 50000 &&
+             data.status in ['draft', 'pending', 'signed'] &&
+             (!('reviewFeedback' in data) || data.reviewFeedback is list);
+    }
+
+    function isValidSOWTemplate(data) {
+      return data.keys().hasAll(['name', 'content']) &&
+             data.name is string && data.name.size() < 100 &&
+             data.content is string && data.content.size() < 50000;
+    }
+
+    function isValidProposal(data) {
+      return data.keys().hasAll(['clientUid', 'title', 'content', 'status']) &&
+             data.clientUid is string &&
+             data.title is string && data.title.size() < 200 &&
+             data.content is string && data.content.size() < 50000 &&
+             data.status in ['draft', 'sent', 'accepted', 'rejected'];
+    }
+
+    function isValidProposalTemplate(data) {
+      return data.keys().hasAll(['name', 'content']) &&
+             data.name is string && data.name.size() < 100 &&
+             data.content is string && data.content.size() < 50000;
+    }
+
+    function isValidEngagement(data) {
+      return data.keys().hasAll(['clientUid', 'status', 'createdAt']) &&
+             data.clientUid is string &&
+             data.status in ['interviewing', 'contracted', 'archived'] &&
+             data.createdAt is string &&
+             (!('acceptanceContract' in data) || (data.acceptanceContract is string && data.acceptanceContract.size() < 100000));
+    }
+
+    function isValidObjection(data) {
+      return data.keys().hasAll(['objection', 'createdAt']) &&
+             data.objection is string && data.objection.size() < 5000 &&
+             data.createdAt is string;
+    }
+
+    function isValidBuildRun(data) {
+      return data.keys().hasAll(['contractId', 'status', 'createdAt']) &&
+             data.contractId is string &&
+             data.status in ['staged', 'building', 'passed', 'blocked', 'handed_off'] &&
+             data.createdAt is string;
+    }
+
+    function isValidCorpusAdapter(data) {
+      return data.keys().hasAll(['name', 'reuseCount', 'isZeroCost']) &&
+             data.name is string &&
+             data.reuseCount is number &&
+             data.isZeroCost is bool;
+    }
+
+    function isValidFixture(data) {
+      return data.keys().hasAll(['name', 'vertical', 'inputData']) &&
+             data.name is string &&
+             data.vertical is string &&
+             data.inputData is string;
+    }
+
+    function isValidVerification(data) {
+      return data.keys().hasAll(['contractId', 'verdict', 'verdictTable', 'verifiedAt']) &&
+             data.contractId is string &&
+             data.verdict in ['PASS', 'FAIL', 'CONVERGED_WITH_RESIDUAL_RISKS', 'PLAN_DEFECT'] &&
+             data.verdictTable is list &&
+             data.verifiedAt is string;
+    }
+
+    function isValidErrorRemedy(data) {
+      return data.keys().hasAll(['errorClass', 'failureMode', 'remedy']) &&
+             data.errorClass is string &&
+             data.failureMode is string &&
+             data.remedy is string;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isOwner(userId) || hasPermission('manageRoles');
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || hasPermission('manageRoles'));
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (hasPermission('manageRoles') || (isOwner(userId) && request.resource.data.role == resource.data.role));
+    }
+
+    match /roles/{roleId} {
+      allow read: if hasPermission('manageRoles');
+      allow create, update, delete: if hasPermission('manageRoles') && isValidRole(request.resource.data);
+    }
+
+    match /projects/{projectId} {
+      allow read: if hasPermission('manageProjects') || (isAuthenticated() && resource.data.clientUid == request.auth.uid);
+      allow create: if hasPermission('manageProjects') && isValidProject(request.resource.data);
+      allow update: if hasPermission('manageProjects') && isValidProject(request.resource.data);
+      allow delete: if hasPermission('manageProjects');
+    }
+
+    match /invoices/{invoiceId} {
+      allow read: if hasPermission('manageInvoices') || (isAuthenticated() && resource.data.clientUid == request.auth.uid);
+      allow create: if hasPermission('manageInvoices') && isValidInvoice(request.resource.data);
+      allow update: if hasPermission('manageInvoices') && isValidInvoice(request.resource.data);
+      allow delete: if hasPermission('manageInvoices');
+    }
+
+    match /sows/{sowId} {
+      allow read: if hasPermission('manageSOWs') || (isAuthenticated() && resource.data.clientUid == request.auth.uid);
+      allow create: if hasPermission('manageSOWs') && isValidSOW(request.resource.data);
+      allow update: if (hasPermission('manageSOWs') && isValidSOW(request.resource.data)) || 
+                     (isAuthenticated() && resource.data.clientUid == request.auth.uid && 
+                      request.resource.data.diff(resource.data).affectedKeys().hasOnly(['signature', 'signedAt', 'status']) &&
+                      request.resource.data.status == 'signed');
+      allow delete: if hasPermission('manageSOWs');
+    }
+
+    match /sowTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if hasPermission('manageSOWs') && isValidSOWTemplate(request.resource.data);
+    }
+
+    match /proposals/{proposalId} {
+      allow read: if hasPermission('manageProposals') || (isAuthenticated() && resource.data.clientUid == request.auth.uid);
+      allow create: if hasPermission('manageProposals') && isValidProposal(request.resource.data);
+      allow update: if hasPermission('manageProposals') && isValidProposal(request.resource.data);
+      allow delete: if hasPermission('manageProposals');
+    }
+
+    match /proposalTemplates/{templateId} {
+      allow read: if isAuthenticated();
+      allow create, update, delete: if hasPermission('manageProposals') && isValidProposalTemplate(request.resource.data);
+    }
+
+    match /notifications/{notificationId} {
+      allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidNotification(request.resource.data);
+      allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
+    }
+
+    match /engagements/{engagementId} {
+      allow read: if isAuthenticated() && (resource.data.clientUid == request.auth.uid || isAdmin() || hasPermission('manageProposals') || hasPermission('manageSOWs'));
+      allow create: if isAuthenticated() && isValidEngagement(request.resource.data);
+      allow update: if isAuthenticated() && isValidEngagement(request.resource.data) && (resource.data.clientUid == request.auth.uid || isAdmin() || hasPermission('manageProposals'));
+      allow delete: if isAdmin() || hasPermission('manageProposals');
+    }
+
+    match /objection_patterns/{objectionId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidObjection(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /build_runs/{buildRunId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidBuildRun(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /corpus_adapters/{adapterId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidCorpusAdapter(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /fixtures/{fixtureId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidFixture(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /verifications/{verificationId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidVerification(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /error_remedies/{remedyId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidErrorRemedy(request.resource.data);
+      allow delete: if isAdmin();
+    }
+  }
+}

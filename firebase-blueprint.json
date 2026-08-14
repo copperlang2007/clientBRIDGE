@@ -1,0 +1,313 @@
+{
+  "entities": {
+    "users": {
+      "title": "User Profile",
+      "description": "User profile and role information",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Firebase Auth UID" },
+        "email": { "type": "string", "format": "email", "description": "User email" },
+        "displayName": { "type": "string", "description": "User display name" },
+        "photoURL": { "type": "string", "description": "Profile picture URL" },
+        "phoneNumber": { "type": "string", "description": "Contact phone number" },
+        "company": { "type": "string", "description": "Company or organization name" },
+        "jobTitle": { "type": "string", "description": "Job title or profession" },
+        "location": { "type": "string", "description": "City, country or timezone" },
+        "website": { "type": "string", "description": "Personal or company website URL" },
+        "bio": { "type": "string", "description": "Short bio or notes" },
+        "role": { "type": "string", "description": "User role (admin, client, or custom role ID)" },
+        "createdAt": { "type": "string", "format": "date-time", "description": "Account creation date" },
+        "updatedAt": { "type": "string", "format": "date-time", "description": "Last profile update timestamp" }
+      },
+      "required": ["uid", "email", "role"]
+    },
+    "roles": {
+      "title": "Custom Role",
+      "description": "Definition of a custom role and its permissions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Role ID" },
+        "name": { "type": "string", "description": "Role name" },
+        "permissions": {
+          "type": "object",
+          "properties": {
+            "manageSOWs": { "type": "boolean" },
+            "manageProposals": { "type": "boolean" },
+            "manageInvoices": { "type": "boolean" },
+            "manageProjects": { "type": "boolean" },
+            "manageRoles": { "type": "boolean" },
+            "viewAnalytics": { "type": "boolean" }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "permissions"]
+    },
+    "projects": {
+      "title": "Project",
+      "description": "Project details and deliverables",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Project ID" },
+        "title": { "type": "string", "description": "Project title" },
+        "clientUid": { "type": "string", "description": "UID of the client" },
+        "sowId": { "type": "string", "description": "Linked SOW ID" },
+        "status": { "type": "string", "enum": ["draft", "active", "completed"], "description": "Project status" },
+        "deliverables": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "name": { "type": "string" },
+              "url": { "type": "string" }
+            }
+          }
+        },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "clientUid", "status"]
+    },
+    "invoices": {
+      "title": "Invoice",
+      "description": "Invoice for project payments",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Invoice ID" },
+        "projectId": { "type": "string", "description": "Project ID" },
+        "clientUid": { "type": "string", "description": "UID of the client" },
+        "amount": { "type": "number", "description": "Invoice amount in cents" },
+        "status": { "type": "string", "enum": ["unpaid", "paid"], "description": "Payment status" },
+        "dueDate": { "type": "string", "format": "date-time", "description": "Payment due date" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["projectId", "clientUid", "amount", "status", "dueDate"]
+    },
+    "notifications": {
+      "title": "Notification",
+      "description": "User notification for reminders or updates",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Notification ID" },
+        "userId": { "type": "string", "description": "UID of the recipient" },
+        "title": { "type": "string", "description": "Notification title" },
+        "message": { "type": "string", "description": "Notification message" },
+        "type": { "type": "string", "enum": ["reminder", "update", "alert"], "description": "Type of notification" },
+        "read": { "type": "boolean", "description": "Whether the notification has been read" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["userId", "title", "message", "type", "read"]
+    },
+    "sows": {
+      "title": "Statement of Work",
+      "description": "Legal document for project scope",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "SOW ID" },
+        "projectId": { "type": "string", "description": "Project ID" },
+        "clientUid": { "type": "string", "description": "UID of the client" },
+        "content": { "type": "string", "description": "Markdown content of the SOW" },
+        "status": { "type": "string", "enum": ["draft", "pending", "signed"], "description": "SOW status" },
+        "signature": { "type": "string", "description": "Base64 signature or name" },
+        "signedAt": { "type": "string", "format": "date-time" },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "reviewFeedback": {
+          "type": "array",
+          "items": {
+            "type": "object",
+            "properties": {
+              "category": { "type": "string", "enum": ["inconsistency", "missing_info", "compliance", "suggestion"] },
+              "severity": { "type": "string", "enum": ["low", "medium", "high"] },
+              "description": { "type": "string" }
+            }
+          }
+        }
+      },
+      "required": ["projectId", "clientUid", "content", "status"]
+    },
+    "sowTemplates": {
+      "title": "SOW Template",
+      "description": "Pre-defined template for SOW generation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Template ID" },
+        "name": { "type": "string", "description": "Template name" },
+        "content": { "type": "string", "description": "Template prompt content" }
+      },
+      "required": ["name", "content"]
+    },
+    "proposals": {
+      "title": "Proposal",
+      "description": "Project proposal document",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Proposal ID" },
+        "clientUid": { "type": "string", "description": "UID of the client" },
+        "title": { "type": "string", "description": "Proposal title" },
+        "content": { "type": "string", "description": "Markdown content of the proposal" },
+        "status": { "type": "string", "enum": ["draft", "sent", "accepted", "rejected"], "description": "Proposal status" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientUid", "title", "content", "status"]
+    },
+    "proposalTemplates": {
+      "title": "Proposal Template",
+      "description": "Pre-defined template for proposal generation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Template ID" },
+        "name": { "type": "string", "description": "Template name" },
+        "content": { "type": "string", "description": "Template prompt content" }
+      },
+      "required": ["name", "content"]
+    },
+    "engagements": {
+      "title": "Engagement & Intake Contract",
+      "description": "Intake interview results, candidate wedges, rubric scores, and Acceptance Contract",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Engagement ID" },
+        "clientUid": { "type": "string", "description": "Client UID or visitor ID" },
+        "clientName": { "type": "string", "description": "Client or Contact Name" },
+        "companyName": { "type": "string", "description": "Company Name" },
+        "status": { "type": "string", "enum": ["interviewing", "contracted", "archived"], "description": "Status" },
+        "winningWedge": { "type": "string", "description": "Selected Single Target Wedge" },
+        "complianceTier": { "type": "string", "enum": ["regulated-medicare", "regulated-other", "unregulated"] },
+        "governingFramework": { "type": "string", "description": "Governing regulatory framework" },
+        "acceptanceContract": { "type": "string", "description": "W0.2 Acceptance Contract content" },
+        "passConditions": { "type": "array", "items": { "type": "string" } },
+        "outOfScope": { "type": "array", "items": { "type": "string" } },
+        "candidateWedges": { "type": "array", "items": { "type": "object" } },
+        "nextWedges": { "type": "array", "items": { "type": "string" } },
+        "transcript": { "type": "array", "items": { "type": "object" } },
+        "objections": { "type": "array", "items": { "type": "string" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "contractedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["clientUid", "status", "createdAt"]
+    },
+    "objection_patterns": {
+      "title": "Objection Pattern",
+      "description": "Harvested sales and technical objections from intake interviews",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Objection ID" },
+        "engagementId": { "type": "string", "description": "Linked Engagement ID" },
+        "objection": { "type": "string", "description": "Objection text heard" },
+        "category": { "type": "string", "description": "Category of objection" },
+        "countermeasure": { "type": "string", "description": "Formulated countermeasure" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["objection", "createdAt"]
+    },
+    "build_runs": {
+      "title": "Build Run Execution",
+      "description": "Engage-build execution records and staged evidence",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Build Run ID" },
+        "contractId": { "type": "string", "description": "Contract / Engagement ID" },
+        "clientUid": { "type": "string", "description": "Client UID" },
+        "clientName": { "type": "string", "description": "Client Name" },
+        "status": { "type": "string", "enum": ["staged", "building", "passed", "blocked", "handed_off"], "description": "Build status" },
+        "complianceTier": { "type": "string", "enum": ["regulated-medicare", "regulated-other", "unregulated"] },
+        "contextIsolationHash": { "type": "string", "description": "Fresh Context SHA256" },
+        "reusedAdapterIds": { "type": "array", "items": { "type": "string" } },
+        "stackCostEstimate": { "type": "number", "description": "Stack cost in USD" },
+        "langHold": { "type": "boolean", "description": "Whether any paid dependency triggered lang_hold" },
+        "langHoldItems": { "type": "array", "items": { "type": "string" } },
+        "buildLogs": { "type": "array", "items": { "type": "string" } },
+        "stagedEvidence": { "type": "array", "items": { "type": "object" } },
+        "artifactsProduced": { "type": "array", "items": { "type": "object" } },
+        "createdAt": { "type": "string", "format": "date-time" },
+        "completedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contractId", "status", "createdAt"]
+    },
+    "corpus_adapters": {
+      "title": "Corpus Reusable Adapter",
+      "description": "Deterministic reusable code components with tracking",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Adapter ID" },
+        "name": { "type": "string", "description": "Adapter Name" },
+        "category": { "type": "string", "description": "Category" },
+        "description": { "type": "string", "description": "Description" },
+        "reuseCount": { "type": "number", "description": "Times reused across engagements" },
+        "isZeroCost": { "type": "boolean", "description": "Whether adapter is $0 cost" },
+        "codeSnippet": { "type": "string", "description": "Code snippet / implementation" },
+        "complianceGates": { "type": "array", "items": { "type": "string" } },
+        "updatedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "reuseCount", "isZeroCost"]
+    },
+    "fixtures": {
+      "title": "Corpus Synthetic Fixture",
+      "description": "Golden synthetic test fixture for deterministic validation",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Fixture ID" },
+        "name": { "type": "string", "description": "Fixture Name" },
+        "vertical": { "type": "string", "description": "Industry vertical" },
+        "inputData": { "type": "string", "description": "Synthetic input data string or JSON" },
+        "expectedOutput": { "type": "string", "description": "Expected deterministic output" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["name", "vertical", "inputData"]
+    },
+    "verifications": {
+      "title": "Engagement Verification",
+      "description": "Engage-verify validation records, verdict tables, correction loops, and harvest receipts",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Verification Record ID" },
+        "contractId": { "type": "string", "description": "Contract ID" },
+        "clientUid": { "type": "string", "description": "Client UID" },
+        "clientName": { "type": "string", "description": "Client Name" },
+        "verdict": { "type": "string", "enum": ["PASS", "FAIL", "CONVERGED_WITH_RESIDUAL_RISKS", "PLAN_DEFECT"], "description": "Verification verdict" },
+        "roundNumber": { "type": "number", "description": "Correction loop round (1-4)" },
+        "verdictTable": { "type": "array", "items": { "type": "object" }, "description": "Mandatory verdict rows per AC with proof pointers" },
+        "findings": { "type": "array", "items": { "type": "object" }, "description": "Severity-ranked findings (critical, high, medium, low)" },
+        "correctionList": { "type": "array", "items": { "type": "string" }, "description": "Numbered correction list for engage-build" },
+        "planDefects": { "type": "array", "items": { "type": "object" }, "description": "Plan-lock contract challenge items" },
+        "residualRisks": { "type": "array", "items": { "type": "string" }, "description": "Explicit residual risks if converged after 4 rounds" },
+        "proposalPackage": { "type": "object", "description": "Generated PROPOSAL op package with evidence appendix and pricing" },
+        "harvestRecords": { "type": "object", "description": "Corpus harvest verification and counts" },
+        "certificateDigest": { "type": "string", "description": "Cryptographic signature digest of the verification verdict" },
+        "verifiedAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["contractId", "verdict", "verdictTable", "verifiedAt"]
+    },
+    "error_remedies": {
+      "title": "Harvested Error Remedy",
+      "description": "Deterministic error class remedy harvested into the master data flywheel",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Remedy ID" },
+        "errorClass": { "type": "string", "description": "W0.3 error class code" },
+        "failureMode": { "type": "string", "description": "Specific failure mode observed" },
+        "remedy": { "type": "string", "description": "Deterministic countermeasure or repair code" },
+        "corpusAdapterTarget": { "type": "string", "description": "Associated adapter if applicable" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["errorClass", "failureMode", "remedy"]
+    }
+  },
+  "firestore": {
+    "/users/{uid}": { "schema": "users", "description": "User profile document" },
+    "/roles/{roleId}": { "schema": "roles", "description": "Custom role document" },
+    "/projects/{projectId}": { "schema": "projects", "description": "Project document" },
+    "/invoices/{invoiceId}": { "schema": "invoices", "description": "Invoice document" },
+    "/sows/{sowId}": { "schema": "sows", "description": "SOW document" },
+    "/sowTemplates/{templateId}": { "schema": "sowTemplates", "description": "SOW template document" },
+    "/proposals/{proposalId}": { "schema": "proposals", "description": "Proposal document" },
+    "/proposalTemplates/{templateId}": { "schema": "proposalTemplates", "description": "Proposal template document" },
+    "/notifications/{notificationId}": { "schema": "notifications", "description": "Notification document" },
+    "/engagements/{engagementId}": { "schema": "engagements", "description": "Engagement intake document" },
+    "/objection_patterns/{objectionId}": { "schema": "objection_patterns", "description": "Harvested objection document" },
+    "/build_runs/{buildRunId}": { "schema": "build_runs", "description": "Engage-build execution document" },
+    "/corpus_adapters/{adapterId}": { "schema": "corpus_adapters", "description": "Corpus adapter document" },
+    "/fixtures/{fixtureId}": { "schema": "fixtures", "description": "Corpus fixture document" },
+    "/verifications/{verificationId}": { "schema": "verifications", "description": "Verification execution record" },
+    "/error_remedies/{remedyId}": { "schema": "error_remedies", "description": "Harvested error remedy document" }
+  }
+}
