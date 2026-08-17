@@ -20,8 +20,10 @@ import {
   Filter,
   Sparkles,
   ExternalLink,
-  CheckCircle2
+  CheckCircle2,
+  MessageSquare
 } from 'lucide-react';
+import { DeliverableFeedbackModal } from './DeliverableFeedbackModal';
 
 export interface TimelineDeliverable {
   name: string;
@@ -31,8 +33,10 @@ export interface TimelineDeliverable {
   uploadedAt?: string;
   projectId?: string;
   projectTitle?: string;
+  clientUid?: string;
   clientName?: string;
   status?: string;
+  feedback?: any[];
 }
 
 interface ProjectTimelineViewProps {
@@ -41,6 +45,7 @@ interface ProjectTimelineViewProps {
   selectedProjectId?: string | null;
   onSelectProject?: (projectId: string | null) => void;
   onDeleteDeliverable?: (projectId: string, deliverable: any) => void;
+  onRequestFeedback?: (projectId: string, projectTitle: string, clientUid: string | undefined, clientName: string | undefined, deliverable: any) => void;
 }
 
 const getFileIcon = (type?: string, name?: string) => {
@@ -80,11 +85,13 @@ export const ProjectTimelineView: React.FC<ProjectTimelineViewProps> = ({
   clients,
   selectedProjectId,
   onSelectProject,
-  onDeleteDeliverable
+  onDeleteDeliverable,
+  onRequestFeedback
 }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const [filterProject, setFilterProject] = useState<string>(selectedProjectId || 'all');
   const [searchQuery, setSearchQuery] = useState<string>('');
+  const [activeFeedbackItem, setActiveFeedbackItem] = useState<TimelineDeliverable | null>(null);
 
   // Collect all deliverables sorted chronologically
   const timelineItems: TimelineDeliverable[] = React.useMemo(() => {
@@ -102,8 +109,10 @@ export const ProjectTimelineView: React.FC<ProjectTimelineViewProps> = ({
             ...del,
             projectId: project.id,
             projectTitle: project.title,
+            clientUid: project.clientUid,
             clientName,
-            status: project.status || 'active'
+            status: project.status || 'active',
+            feedback: del.feedback || []
           });
         });
       }
@@ -309,16 +318,38 @@ export const ProjectTimelineView: React.FC<ProjectTimelineViewProps> = ({
                         </div>
 
                         {/* Actions */}
-                        <div className="flex items-center justify-between pt-1 border-t border-gold/10">
-                          <a
-                            href={item.url}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-vanta font-bold rounded-lg text-[9px] uppercase tracking-wider hover:bg-oat transition-colors shadow-sm"
-                          >
-                            <Download size={12} />
-                            <span>Download</span>
-                          </a>
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-gold/10">
+                          <div className="flex items-center gap-2">
+                            <a
+                              href={item.url}
+                              target="_blank"
+                              rel="noreferrer"
+                              className="flex items-center gap-1.5 px-3 py-1.5 bg-gold text-vanta font-bold rounded-lg text-[9px] uppercase tracking-wider hover:bg-oat transition-colors shadow-sm"
+                            >
+                              <Download size={12} />
+                              <span>Download</span>
+                            </a>
+
+                            <button
+                              onClick={() => {
+                                if (onRequestFeedback && item.projectId) {
+                                  onRequestFeedback(item.projectId, item.projectTitle || 'Project', item.clientUid, item.clientName, item);
+                                } else {
+                                  setActiveFeedbackItem(item);
+                                }
+                              }}
+                              className="flex items-center gap-1.5 px-2.5 py-1.5 bg-gold/10 hover:bg-gold/20 text-gold border border-gold/20 rounded-lg text-[9px] font-mono uppercase tracking-wider transition-all"
+                              title="Request or submit feedback on this deliverable"
+                            >
+                              <MessageSquare size={12} />
+                              <span>Feedback</span>
+                              {item.feedback && item.feedback.length > 0 && (
+                                <span className="ml-0.5 px-1.5 py-0.2 bg-gold text-vanta rounded-full text-[8px] font-bold">
+                                  {item.feedback.length}
+                                </span>
+                              )}
+                            </button>
+                          </div>
 
                           {onDeleteDeliverable && item.projectId && (
                             <button
@@ -338,6 +369,22 @@ export const ProjectTimelineView: React.FC<ProjectTimelineViewProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* Deliverable Feedback Modal */}
+      {activeFeedbackItem && (
+        <DeliverableFeedbackModal
+          isOpen={!!activeFeedbackItem}
+          onClose={() => setActiveFeedbackItem(null)}
+          projectId={activeFeedbackItem.projectId || ''}
+          projectTitle={activeFeedbackItem.projectTitle || 'Project'}
+          clientUid={activeFeedbackItem.clientUid}
+          clientName={activeFeedbackItem.clientName}
+          deliverable={activeFeedbackItem}
+          onFeedbackSaved={() => {
+            // Updated in Firestore
+          }}
+        />
       )}
     </div>
   );

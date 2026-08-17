@@ -9,7 +9,7 @@ import {
   FileImage, FileVideo, FileAudio, FileArchive, FileCode, FileSpreadsheet, 
   File, Globe, User, Building2, Briefcase, MapPin, Sparkles, Video, 
   Layers, Clock, Calendar, CheckCircle2, ShieldCheck, Eye, ArrowRight, 
-  FolderKanban
+  FolderKanban, MessageSquare
 } from 'lucide-react';
 import { SOWSigning } from './SOWSigning';
 import { UserProfile } from './UserProfile';
@@ -18,8 +18,10 @@ import { EngageBuild } from './EngageBuild';
 import { EngageVerify } from './EngageVerify';
 import { GoogleMeetHub } from './GoogleMeetHub';
 import { ProjectTimelineView } from './ProjectTimelineView';
+import { DeliverableFeedbackModal } from './DeliverableFeedbackModal';
 import { exportInvoiceToPDF } from '../services/invoicePdfExport';
 import { MilestoneProgressBar } from './MilestoneProgressBar';
+import { ClientStatsDashboard } from './ClientStatsDashboard';
 
 const getFileIcon = (type?: string, name?: string) => {
   const mime = type?.toLowerCase() || '';
@@ -61,6 +63,13 @@ export const ClientDashboard: React.FC = () => {
   const [isPaying, setIsPaying] = useState<string | null>(null);
   const [deliverableFilter, setDeliverableFilter] = useState<string>('all');
   const [selectedTimelineProjectId, setSelectedTimelineProjectId] = useState<string | null>(null);
+  const [activeFeedbackModal, setActiveFeedbackModal] = useState<{
+    projectId: string;
+    projectTitle: string;
+    clientUid?: string;
+    clientName?: string;
+    deliverable: any;
+  } | null>(null);
 
   // Strictly scoped queries: only items belonging to this client UID
   useEffect(() => {
@@ -405,6 +414,15 @@ export const ClientDashboard: React.FC = () => {
               clients={clientItem}
               selectedProjectId={selectedTimelineProjectId}
               onSelectProject={setSelectedTimelineProjectId}
+              onRequestFeedback={(projId, projTitle, cUid, cName, del) => {
+                setActiveFeedbackModal({
+                  projectId: projId,
+                  projectTitle: projTitle,
+                  clientUid: cUid || user?.uid,
+                  clientName: cName || profile?.displayName || user?.displayName || user?.email,
+                  deliverable: del
+                });
+              }}
             />
           </motion.div>
         ) : activeTab === 'sows' ? (
@@ -684,15 +702,27 @@ export const ClientDashboard: React.FC = () => {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, y: -15 }}
             transition={{ duration: 0.3 }}
-            className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8"
+            className="space-y-8"
           >
-            {/* Statements of Work Card */}
-            <div className="p-6 md:p-10 border border-gold/10 bg-gold/5 rounded-[24px] md:rounded-[32px] backdrop-blur-sm flex flex-col justify-between">
-              <div>
-                <div className="flex items-center justify-between mb-6 md:mb-8">
-                  <h3 className="text-xl md:text-2xl font-bold text-oat">Statements of Work</h3>
-                  <PenTool className="text-gold md:w-6 md:h-6" size={20} />
-                </div>
+            {/* Visual Summary Stats Dashboard using Recharts */}
+            <ClientStatsDashboard
+              projects={projects}
+              invoices={invoices}
+              sows={sows}
+              onNavigateToInvoices={() => setActiveTab('invoices')}
+              onNavigateToTimeline={() => setActiveTab('timeline')}
+              onPayInvoice={handlePayment}
+            />
+
+            {/* Detailed Quick Access Grid */}
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6 md:gap-8">
+              {/* Statements of Work Card */}
+              <div className="p-6 md:p-10 border border-gold/10 bg-gold/5 rounded-[24px] md:rounded-[32px] backdrop-blur-sm flex flex-col justify-between">
+                <div>
+                  <div className="flex items-center justify-between mb-6 md:mb-8">
+                    <h3 className="text-xl md:text-2xl font-bold text-oat">Statements of Work</h3>
+                    <PenTool className="text-gold md:w-6 md:h-6" size={20} />
+                  </div>
                 <div className="space-y-4">
                   {sows.length === 0 && <p className="text-oat/30 text-sm italic">No SOWs assigned.</p>}
                   {sows.map(sow => (
@@ -816,15 +846,36 @@ export const ClientDashboard: React.FC = () => {
                                     </div>
                                   </div>
                                 </div>
-                                <a 
-                                  href={del.url} 
-                                  target="_blank" 
-                                  rel="noreferrer" 
-                                  className="p-2 text-gold/40 hover:text-gold transition-colors"
-                                  title="Download / View"
-                                >
-                                  <Download size={16} />
-                                </a>
+                                <div className="flex items-center gap-2">
+                                  <button
+                                    onClick={() => setActiveFeedbackModal({
+                                      projectId: project.id,
+                                      projectTitle: project.title,
+                                      clientUid: user?.uid,
+                                      clientName: profile?.displayName || user?.displayName || user?.email,
+                                      deliverable: del
+                                    })}
+                                    className="flex items-center gap-1.5 px-3 py-1.5 bg-gold/10 hover:bg-gold/20 text-gold border border-gold/20 rounded-xl text-[9px] font-mono uppercase tracking-wider transition-all"
+                                    title="Request feedback or add comments"
+                                  >
+                                    <MessageSquare size={12} />
+                                    <span className="hidden sm:inline">Feedback</span>
+                                    {del.feedback && del.feedback.length > 0 && (
+                                      <span className="px-1.5 py-0.2 bg-gold text-vanta rounded-full text-[8px] font-black">
+                                        {del.feedback.length}
+                                      </span>
+                                    )}
+                                  </button>
+                                  <a 
+                                    href={del.url} 
+                                    target="_blank" 
+                                    rel="noreferrer" 
+                                    className="p-2 text-gold/40 hover:text-gold transition-colors"
+                                    title="Download / View"
+                                  >
+                                    <Download size={16} />
+                                  </a>
+                                </div>
                               </motion.div>
                             ))}
                           </div>
@@ -934,6 +985,7 @@ export const ClientDashboard: React.FC = () => {
                 </button>
               )}
             </div>
+            </div>
           </motion.div>
         )}
       </AnimatePresence>
@@ -943,6 +995,22 @@ export const ClientDashboard: React.FC = () => {
           <SOWSigning sow={selectedSow} onClose={() => setSelectedSow(null)} />
         )}
       </AnimatePresence>
+
+      {/* Deliverable Feedback Modal */}
+      {activeFeedbackModal && (
+        <DeliverableFeedbackModal
+          isOpen={!!activeFeedbackModal}
+          onClose={() => setActiveFeedbackModal(null)}
+          projectId={activeFeedbackModal.projectId}
+          projectTitle={activeFeedbackModal.projectTitle}
+          clientUid={activeFeedbackModal.clientUid}
+          clientName={activeFeedbackModal.clientName}
+          deliverable={activeFeedbackModal.deliverable}
+          onFeedbackSaved={() => {
+            // Real-time Firestore sync handles state updates
+          }}
+        />
+      )}
     </div>
   );
 };

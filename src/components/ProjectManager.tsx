@@ -4,9 +4,10 @@ import { ref, uploadBytesResumable, getDownloadURL } from 'firebase/storage';
 import { db, storage, OperationType, handleFirestoreError } from '../firebase';
 import { sendNotification } from '../lib/notifications';
 import { motion, AnimatePresence } from 'motion/react';
-import { Briefcase, Plus, Link as LinkIcon, FileText, Upload, Trash2, CheckCircle, X, FileImage, FileVideo, FileAudio, FileArchive, FileCode, FileSpreadsheet, File, Globe, CheckSquare, Clock, Calendar, LayoutGrid, Layers } from 'lucide-react';
+import { Briefcase, Plus, Link as LinkIcon, FileText, Upload, Trash2, CheckCircle, X, FileImage, FileVideo, FileAudio, FileArchive, FileCode, FileSpreadsheet, File, Globe, CheckSquare, Clock, Calendar, LayoutGrid, Layers, MessageSquare } from 'lucide-react';
 import { MilestoneProgressBar } from './MilestoneProgressBar';
 import { ProjectTimelineView } from './ProjectTimelineView';
+import { DeliverableFeedbackModal } from './DeliverableFeedbackModal';
 import { logAuditEvent } from '../services/auditLogger';
 
 const getFileIcon = (type?: string, name?: string) => {
@@ -45,6 +46,13 @@ export const ProjectManager: React.FC = () => {
   const [newDeliverableUrl, setNewDeliverableUrl] = useState('');
   const [isAdding, setIsAdding] = useState(false);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [activeFeedbackModal, setActiveFeedbackModal] = useState<{
+    projectId: string;
+    projectTitle: string;
+    clientUid?: string;
+    clientName?: string;
+    deliverable: any;
+  } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -243,6 +251,15 @@ export const ProjectManager: React.FC = () => {
           projects={projects}
           clients={clients}
           onDeleteDeliverable={handleDeleteDeliverable}
+          onRequestFeedback={(projId, projTitle, cUid, cName, del) => {
+            setActiveFeedbackModal({
+              projectId: projId,
+              projectTitle: projTitle,
+              clientUid: cUid,
+              clientName: cName,
+              deliverable: del
+            });
+          }}
         />
       ) : (
         <div className="space-y-6">
@@ -466,15 +483,36 @@ export const ProjectManager: React.FC = () => {
                                   </div>
                                 </div>
 
-                                <div className="flex items-center justify-between pt-2 border-t border-gold/10">
-                                  <a
-                                    href={del.url}
-                                    target="_blank"
-                                    rel="noreferrer"
-                                    className="px-2.5 py-1 bg-gold text-vanta font-bold rounded-md text-[8px] uppercase tracking-wider hover:bg-oat transition-colors"
-                                  >
-                                    Download
-                                  </a>
+                                <div className="flex items-center justify-between pt-2 border-t border-gold/10 gap-2">
+                                  <div className="flex items-center gap-1.5">
+                                    <a
+                                      href={del.url}
+                                      target="_blank"
+                                      rel="noreferrer"
+                                      className="px-2.5 py-1 bg-gold text-vanta font-bold rounded-md text-[8px] uppercase tracking-wider hover:bg-oat transition-colors"
+                                    >
+                                      Download
+                                    </a>
+                                    <button
+                                      onClick={() => setActiveFeedbackModal({
+                                        projectId: project.id,
+                                        projectTitle: project.title,
+                                        clientUid: project.clientUid,
+                                        clientName: client?.displayName || client?.email,
+                                        deliverable: del
+                                      })}
+                                      className="flex items-center gap-1 px-2 py-1 bg-gold/10 hover:bg-gold/20 text-gold border border-gold/20 rounded-md text-[8px] font-mono uppercase tracking-wider transition-all"
+                                      title="Request or view feedback on this deliverable"
+                                    >
+                                      <MessageSquare size={10} />
+                                      <span>Feedback</span>
+                                      {del.feedback && del.feedback.length > 0 && (
+                                        <span className="px-1 bg-gold text-vanta rounded-full text-[7px] font-black">
+                                          {del.feedback.length}
+                                        </span>
+                                      )}
+                                    </button>
+                                  </div>
                                   <button
                                     onClick={() => handleDeleteDeliverable(project.id, del)}
                                     className="p-1 text-red-500/30 hover:text-red-500 transition-colors"
@@ -521,6 +559,26 @@ export const ProjectManager: React.FC = () => {
                               </div>
                             </div>
                             <div className="flex items-center gap-2">
+                              <button
+                                onClick={() => setActiveFeedbackModal({
+                                  projectId: project.id,
+                                  projectTitle: project.title,
+                                  clientUid: project.clientUid,
+                                  clientName: client?.displayName || client?.email,
+                                  deliverable: del
+                                })}
+                                className="flex items-center gap-1.5 px-3 py-1.5 bg-gold/10 hover:bg-gold/20 text-gold border border-gold/20 rounded-xl text-[9px] font-mono uppercase tracking-wider transition-all"
+                                title="Request Feedback / View Comments"
+                              >
+                                <MessageSquare size={12} />
+                                <span className="hidden sm:inline">Request Feedback</span>
+                                <span className="sm:hidden">Feedback</span>
+                                {del.feedback && del.feedback.length > 0 && (
+                                  <span className="px-1.5 py-0.2 bg-gold text-vanta rounded-full text-[8px] font-black">
+                                    {del.feedback.length}
+                                  </span>
+                                )}
+                              </button>
                               <a 
                                 href={del.url} 
                                 target="_blank" 
@@ -548,6 +606,22 @@ export const ProjectManager: React.FC = () => {
             );
           })}
         </div>
+      )}
+
+      {/* Deliverable Feedback Modal */}
+      {activeFeedbackModal && (
+        <DeliverableFeedbackModal
+          isOpen={!!activeFeedbackModal}
+          onClose={() => setActiveFeedbackModal(null)}
+          projectId={activeFeedbackModal.projectId}
+          projectTitle={activeFeedbackModal.projectTitle}
+          clientUid={activeFeedbackModal.clientUid}
+          clientName={activeFeedbackModal.clientName}
+          deliverable={activeFeedbackModal.deliverable}
+          onFeedbackSaved={() => {
+            // Firestore real-time updates will automatically refresh
+          }}
+        />
       )}
     </div>
   );

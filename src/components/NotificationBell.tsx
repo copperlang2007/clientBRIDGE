@@ -6,16 +6,17 @@ import { useAuth } from '../contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
 
 export const NotificationBell: React.FC = () => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [notifications, setNotifications] = useState<any[]>([]);
   const [isOpen, setIsOpen] = useState(false);
 
   useEffect(() => {
     if (!user) return;
 
+    const userIds = isAdmin ? [user.uid, 'admin_global'] : [user.uid];
     const q = query(
       collection(db, 'notifications'),
-      where('userId', '==', user.uid),
+      where('userId', 'in', userIds),
       orderBy('createdAt', 'desc')
     );
 
