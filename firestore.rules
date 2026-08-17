@@ -183,6 +183,21 @@ service cloud.firestore {
              data.remedy is string;
     }
 
+    function isValidMeeting(data) {
+      return data.keys().hasAll(['title', 'meetingUri', 'meetingCode', 'status', 'createdAt']) &&
+             data.title is string && data.title.size() <= 200 &&
+             data.meetingUri is string &&
+             data.meetingCode is string &&
+             data.status in ['scheduled', 'live', 'completed', 'cancelled'] &&
+             data.createdAt is string;
+    }
+
+    function isValidAuditLog(data) {
+      return data.keys().hasAll(['action', 'timestamp']) &&
+             data.action is string &&
+             data.timestamp is string;
+    }
+
     // Rules
     match /users/{userId} {
       allow read: if isOwner(userId) || hasPermission('manageRoles');
@@ -284,6 +299,18 @@ service cloud.firestore {
       allow read: if isAuthenticated();
       allow create, update: if isAuthenticated() && isValidErrorRemedy(request.resource.data);
       allow delete: if isAdmin();
+    }
+
+    match /meetings/{meetingId} {
+      allow read: if isAuthenticated();
+      allow create, update: if isAuthenticated() && isValidMeeting(request.resource.data);
+      allow delete: if isAdmin() || (isAuthenticated() && resource.data.hostUid == request.auth.uid);
+    }
+
+    match /audit_logs/{auditId} {
+      allow read: if isAuthenticated();
+      allow create: if isAuthenticated() && isValidAuditLog(request.resource.data);
+      allow update, delete: if isAdmin();
     }
   }
 }

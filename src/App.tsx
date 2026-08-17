@@ -16,18 +16,21 @@ import { UserProfile } from './components/UserProfile';
 import { EngageIntake } from './components/EngageIntake';
 import { EngageBuild } from './components/EngageBuild';
 import { EngageVerify } from './components/EngageVerify';
+import { GoogleMeetHub } from './components/GoogleMeetHub';
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { motion, AnimatePresence } from 'motion/react';
-import { CheckCircle, XCircle, Loader2, User as UserIcon } from 'lucide-react';
+import { CheckCircle, XCircle, Loader2, User as UserIcon, X, Video } from 'lucide-react';
 
 function AppContent() {
   const [scrollProgress, setScrollProgress] = useState(0);
   const [paymentStatus, setPaymentStatus] = useState<'success' | 'cancel' | 'verifying' | null>(null);
-  const [activeArchitect, setActiveArchitect] = useState<'intake' | 'build' | 'verify' | 'sow' | 'proposal' | 'invoice' | 'projects' | 'roles'>('intake');
+  const [activeArchitect, setActiveArchitect] = useState<'intake' | 'build' | 'verify' | 'meet' | 'sow' | 'proposal' | 'invoice' | 'projects' | 'roles'>('intake');
   const [selectedBuildContract, setSelectedBuildContract] = useState<any>(null);
   const [selectedVerifyBuild, setSelectedVerifyBuild] = useState<any>(null);
   const [selectedProposalPackage, setSelectedProposalPackage] = useState<any>(null);
   const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [isMeetModalOpen, setIsMeetModalOpen] = useState(false);
+  const [meetModalContext, setMeetModalContext] = useState<any>(null);
   const { user, profile, permissions, isAdmin, loading, logout } = useAuth();
 
   useEffect(() => {
@@ -95,7 +98,7 @@ function AppContent() {
       <ParticleBackground />
       <div className="fixed inset-0 bg-vanta/20 pointer-events-none z-0" />
 
-      <Navbar />
+      <Navbar onOpenMeet={() => setIsMeetModalOpen(true)} />
 
       <main className="relative z-10">
         <Hero />
@@ -195,6 +198,52 @@ function AppContent() {
                 )}
               </AnimatePresence>
 
+              {/* Google Meet Modal Overlay */}
+              <AnimatePresence>
+                {isMeetModalOpen && (
+                  <div className="fixed inset-0 z-[160] flex items-center justify-center p-2 sm:p-4 md:p-6 bg-vanta/90 backdrop-blur-xl overflow-y-auto">
+                    <motion.div
+                      initial={{ opacity: 0, scale: 0.95, y: 20 }}
+                      animate={{ opacity: 1, scale: 1, y: 0 }}
+                      exit={{ opacity: 0, scale: 0.95, y: 20 }}
+                      transition={{ duration: 0.3 }}
+                      className="w-full max-w-6xl my-4 sm:my-8 max-h-[92vh] overflow-y-auto custom-scrollbar relative bg-vanta-dark border border-gold/30 rounded-3xl p-4 sm:p-6 md:p-8 shadow-2xl shadow-gold/10"
+                    >
+                      <div className="flex items-center justify-between pb-4 mb-6 border-b border-gold/15">
+                        <div className="flex items-center gap-3">
+                          <div className="p-2.5 rounded-2xl bg-gold/10 border border-gold/20 text-gold">
+                            <Video size={22} className="animate-pulse" />
+                          </div>
+                          <div>
+                            <h2 className="text-lg sm:text-xl font-black uppercase tracking-tight text-oat">
+                              Google Meet <span className="text-gold font-normal">Conferencing Suite</span>
+                            </h2>
+                            <p className="text-[11px] font-mono text-oat/60">
+                              Instant OAuth2 space generation, active conference controls & live milestone notes.
+                            </p>
+                          </div>
+                        </div>
+                        <button
+                          onClick={() => {
+                            setIsMeetModalOpen(false);
+                            setMeetModalContext(null);
+                          }}
+                          className="p-2 text-oat/60 hover:text-gold hover:bg-gold/10 rounded-xl transition-all border border-gold/20 cursor-pointer"
+                        >
+                          <X size={20} />
+                        </button>
+                      </div>
+
+                      <GoogleMeetHub 
+                        initialPhase={meetModalContext?.initialPhase}
+                        clientName={meetModalContext?.clientName}
+                        initialAgenda={meetModalContext?.agenda}
+                      />
+                    </motion.div>
+                  </div>
+                )}
+              </AnimatePresence>
+
               <AnimatePresence mode="wait">
                 {isAdmin ? (
                   <motion.div
@@ -213,6 +262,7 @@ function AppContent() {
                           { id: 'intake', label: 'Engage Intake (Phase 1)', permission: 'manageProposals' },
                           { id: 'build', label: 'Engage Build (Phase 2)', permission: 'manageProposals' },
                           { id: 'verify', label: 'Engage Verify (Phase 3)', permission: 'manageProposals' },
+                          { id: 'meet', label: 'Google Meet Hub', permission: 'manageProposals' },
                           { id: 'sow', label: 'SOW Architect', permission: 'manageSOWs' },
                           { id: 'proposal', label: 'Proposal Architect', permission: 'manageProposals' },
                           { id: 'invoice', label: 'Invoice Architect', permission: 'manageInvoices' },
@@ -249,6 +299,10 @@ function AppContent() {
                                 setSelectedBuildContract(contract);
                                 setActiveArchitect('build');
                               }}
+                              onOpenMeet={(ctx) => {
+                                setMeetModalContext(ctx);
+                                setIsMeetModalOpen(true);
+                              }}
                             />
                           </motion.div>
                         )}
@@ -266,6 +320,10 @@ function AppContent() {
                               onNavigateToVerify={(buildRun) => {
                                 setSelectedVerifyBuild(buildRun);
                                 setActiveArchitect('verify');
+                              }}
+                              onOpenMeet={(ctx) => {
+                                setMeetModalContext(ctx);
+                                setIsMeetModalOpen(true);
                               }}
                             />
                           </motion.div>
@@ -297,6 +355,25 @@ function AppContent() {
                                 if (pkg) setSelectedProposalPackage(pkg);
                                 setActiveArchitect('invoice');
                               }}
+                              onOpenMeet={(ctx) => {
+                                setMeetModalContext(ctx);
+                                setIsMeetModalOpen(true);
+                              }}
+                            />
+                          </motion.div>
+                        )}
+                        {activeArchitect === 'meet' && (
+                          <motion.div
+                            key="meet"
+                            initial={{ opacity: 0, x: 20 }}
+                            animate={{ opacity: 1, x: 0 }}
+                            exit={{ opacity: 0, x: -20 }}
+                            transition={{ duration: 0.3 }}
+                          >
+                            <GoogleMeetHub 
+                              initialPhase={meetModalContext?.initialPhase}
+                              clientName={meetModalContext?.clientName}
+                              initialAgenda={meetModalContext?.agenda}
                             />
                           </motion.div>
                         )}

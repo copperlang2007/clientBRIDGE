@@ -8,6 +8,7 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
   LineChart, Line, Cell
 } from 'recharts';
+import { AuditLogTable } from './AuditLogTable';
 
 type TimeRange = 'all' | 'month' | 'quarter' | 'ytd';
 
@@ -329,6 +330,9 @@ export const AdminDashboard: React.FC = () => {
           </ResponsiveContainer>
         </div>
       </div>
+
+      {/* Lightweight System Audit Log Table */}
+      <AuditLogTable />
     </>
     ) : (
         <div className="p-12 border border-gold/10 bg-gold/5 rounded-[32px] text-center">

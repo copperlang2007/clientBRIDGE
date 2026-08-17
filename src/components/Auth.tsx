@@ -4,7 +4,7 @@ import { motion, AnimatePresence } from 'motion/react';
 import { LogIn, Mail, Lock, User as UserIcon, ArrowRight, Chrome } from 'lucide-react';
 
 export const Auth: React.FC = () => {
-  const { signInWithGoogle, signInWithEmail, signUpWithEmail, loading } = useAuth();
+  const { signInWithGoogle, signInWithEmail, signUpWithEmail, signInAsDemo, loading } = useAuth();
   const [isSignUp, setIsSignUp] = useState(false);
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
@@ -146,25 +146,9 @@ export const Auth: React.FC = () => {
             setPassword('password123');
             setError(null);
             try {
-              await signInWithEmail('admin@demo.com', 'password123');
+              await signInAsDemo('admin');
             } catch (err: any) {
-              console.error("Demo Admin Error:", err);
-              if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-                try {
-                  await signUpWithEmail('admin@demo.com', 'password123', 'Demo Admin');
-                } catch (signUpErr: any) {
-                  console.error("Demo Admin SignUp Error:", signUpErr);
-                  if (signUpErr.code === 'auth/email-already-in-use') {
-                    setError('Demo account exists but password might be different. Try manual sign-in or check Firebase Console.');
-                  } else if (signUpErr.code === 'auth/operation-not-allowed') {
-                    setError('Email/Password auth is disabled in Firebase Console.');
-                  } else {
-                    setError('Demo account setup failed: ' + signUpErr.message);
-                  }
-                }
-              } else {
-                setError(err.message);
-              }
+              setError(err.message || 'Demo Admin access failed. Please try signing up directly.');
             }
           }}
           disabled={loading}
@@ -180,25 +164,9 @@ export const Auth: React.FC = () => {
             setPassword('password123');
             setError(null);
             try {
-              await signInWithEmail('client@demo.com', 'password123');
+              await signInAsDemo('client');
             } catch (err: any) {
-              console.error("Demo Client Error:", err);
-              if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
-                try {
-                  await signUpWithEmail('client@demo.com', 'password123', 'Demo Client');
-                } catch (signUpErr: any) {
-                  console.error("Demo Client SignUp Error:", signUpErr);
-                  if (signUpErr.code === 'auth/email-already-in-use') {
-                    setError('Demo account exists but password might be different. Try manual sign-in or check Firebase Console.');
-                  } else if (signUpErr.code === 'auth/operation-not-allowed') {
-                    setError('Email/Password auth is disabled in Firebase Console.');
-                  } else {
-                    setError('Demo account setup failed: ' + signUpErr.message);
-                  }
-                }
-              } else {
-                setError(err.message);
-              }
+              setError(err.message || 'Demo Client access failed. Please try signing up directly.');
             }
           }}
           disabled={loading}

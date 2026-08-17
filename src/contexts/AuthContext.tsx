@@ -7,6 +7,7 @@ import {
   signOut,
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
+  signInAnonymously,
   updateProfile
 } from 'firebase/auth';
 import { doc, getDoc, setDoc, onSnapshot, updateDoc } from 'firebase/firestore';
@@ -37,6 +38,7 @@ interface AuthContextType {
   signInWithGoogle: () => Promise<void>;
   signInWithEmail: (email: string, pass: string) => Promise<void>;
   signUpWithEmail: (email: string, pass: string, name: string) => Promise<void>;
+  signInAsDemo: (role?: 'admin' | 'client') => Promise<void>;
   updateUserProfile: (data: Partial<UserProfileData>) => Promise<void>;
   logout: () => Promise<void>;
 }
@@ -88,31 +90,42 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       }
 
       if (currentUser) {
+        const isAdmin = currentUser.email === 'Lang@theartificialbridge.com' || 
+                        currentUser.email === 'mlang@team-iia.com' || 
+                        currentUser.email === 'admin@demo.com';
+
+        const defaultProfile: UserProfileData = {
+          uid: currentUser.uid,
+          email: currentUser.email || '',
+          displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
+          photoURL: currentUser.photoURL || '',
+          role: isAdmin ? 'admin' : 'client',
+          createdAt: new Date().toISOString()
+        };
+
         const docRef = doc(db, 'users', currentUser.uid);
         
         try {
           const docSnap = await getDoc(docRef);
           if (!docSnap.exists()) {
-            const isAdmin = currentUser.email === 'Lang@theartificialbridge.com' || currentUser.email === 'mlang@team-iia.com' || currentUser.email === 'admin@demo.com';
-            const newProfile: UserProfileData = {
-              uid: currentUser.uid,
-              email: currentUser.email || '',
-              displayName: currentUser.displayName || currentUser.email?.split('@')[0] || 'User',
-              photoURL: currentUser.photoURL || '',
-              role: isAdmin ? 'admin' : 'client',
-              createdAt: new Date().toISOString()
-            };
-            await setDoc(docRef, newProfile);
+            await setDoc(docRef, defaultProfile);
+            setProfile(defaultProfile);
+            setPermissions(isAdmin ? ADMIN_PERMISSIONS : DEFAULT_PERMISSIONS);
           } else {
             // Check auto-upgrade admin email
-            const currentData = docSnap.data();
-            const isAdminEmail = currentUser.email === 'Lang@theartificialbridge.com' || currentUser.email === 'mlang@team-iia.com' || currentUser.email === 'admin@demo.com';
-            if (isAdminEmail && currentData.role !== 'admin') {
+            const currentData = docSnap.data() as UserProfileData;
+            if (isAdmin && currentData.role !== 'admin') {
               await updateDoc(docRef, { role: 'admin' });
+              currentData.role = 'admin';
             }
+            setProfile(currentData);
+            setPermissions(currentData.role === 'admin' ? ADMIN_PERMISSIONS : DEFAULT_PERMISSIONS);
           }
-        } catch (error) {
-          console.error('Error initializing user profile:', error);
+        } catch (error: any) {
+          // Graceful fallback for offline client / network delay
+          console.warn('Firestore user profile offline/network notice:', error?.message || error);
+          setProfile(prev => prev || defaultProfile);
+          setPermissions(isAdmin ? ADMIN_PERMISSIONS : DEFAULT_PERMISSIONS);
         }
 
         // Real-time listener for user profile
@@ -141,12 +154,15 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
               }
             }
           } else {
-            setProfile(null);
-            setPermissions(DEFAULT_PERMISSIONS);
+            setProfile(defaultProfile);
+            setPermissions(isAdmin ? ADMIN_PERMISSIONS : DEFAULT_PERMISSIONS);
           }
           setLoading(false);
         }, (error) => {
-          handleFirestoreError(error, OperationType.GET, `users/${currentUser.uid}`);
+          // Do not crash the app if Firestore is offline; use local fallback
+          console.warn('User profile sync notice (offline mode active):', error?.message || error);
+          setProfile(prev => prev || defaultProfile);
+          setPermissions(isAdmin ? ADMIN_PERMISSIONS : DEFAULT_PERMISSIONS);
           setLoading(false);
         });
 
@@ -175,6 +191,72 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const signUpWithEmail = async (email: string, pass: string, name: string) => {
     const { user } = await createUserWithEmailAndPassword(auth, email, pass);
     await updateProfile(user, { displayName: name });
+  };
+
+  const signInAsDemo = async (role: 'admin' | 'client' = 'client') => {
+    const demoEmail = role === 'admin' ? 'admin@demo.com' : 'client@demo.com';
+    const demoPassword = 'password123';
+    const demoName = role === 'admin' ? 'Demo Admin' : 'Demo Client';
+
+    try {
+      // 1. Attempt standard email/password login
+      await signInWithEmailAndPassword(auth, demoEmail, demoPassword);
+    } catch (err: any) {
+      // 2. If user doesn't exist or credential mismatch on creation, try to sign up
+      if (err.code === 'auth/user-not-found' || err.code === 'auth/invalid-credential') {
+        try {
+          const { user: newUser } = await createUserWithEmailAndPassword(auth, demoEmail, demoPassword);
+          await updateProfile(newUser, { displayName: demoName });
+        } catch (signUpErr: any) {
+          // 3. Fall back to anonymous session with demo profile if email is in use or signup disabled
+          try {
+            const { user: anonUser } = await signInAnonymously(auth);
+            await updateProfile(anonUser, { displayName: demoName });
+            
+            const docRef = doc(db, 'users', anonUser.uid);
+            const guestProfile: UserProfileData = {
+              uid: anonUser.uid,
+              email: demoEmail,
+              displayName: demoName,
+              role: role,
+              createdAt: new Date().toISOString()
+            };
+            try {
+              await setDoc(docRef, guestProfile, { merge: true });
+            } catch (e) {
+              console.warn('Demo profile setDoc fallback notice:', e);
+            }
+            setProfile(guestProfile);
+            setPermissions(role === 'admin' ? ADMIN_PERMISSIONS : DEFAULT_PERMISSIONS);
+          } catch {
+            throw signUpErr;
+          }
+        }
+      } else {
+        // Fall back to anonymous session
+        try {
+          const { user: anonUser } = await signInAnonymously(auth);
+          await updateProfile(anonUser, { displayName: demoName });
+          const docRef = doc(db, 'users', anonUser.uid);
+          const guestProfile: UserProfileData = {
+            uid: anonUser.uid,
+            email: demoEmail,
+            displayName: demoName,
+            role: role,
+            createdAt: new Date().toISOString()
+          };
+          try {
+            await setDoc(docRef, guestProfile, { merge: true });
+          } catch (e) {
+            console.warn('Demo profile setDoc fallback notice:', e);
+          }
+          setProfile(guestProfile);
+          setPermissions(role === 'admin' ? ADMIN_PERMISSIONS : DEFAULT_PERMISSIONS);
+        } catch {
+          throw err;
+        }
+      }
+    }
   };
 
   const updateUserProfile = async (data: Partial<UserProfileData>) => {
@@ -224,6 +306,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
       signInWithGoogle,
       signInWithEmail,
       signUpWithEmail,
+      signInAsDemo,
       updateUserProfile,
       logout
     }}>

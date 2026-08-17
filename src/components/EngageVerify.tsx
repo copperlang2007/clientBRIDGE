@@ -31,7 +31,8 @@ import {
   Zap,
   Play,
   FileCheck2,
-  FolderLock
+  FolderLock,
+  Video
 } from 'lucide-react';
 import { collection, query, where, getDocs, addDoc } from 'firebase/firestore';
 import { db } from '../firebase';
@@ -56,6 +57,7 @@ interface EngageVerifyProps {
   onNavigateToBuild?: (contract?: any) => void;
   onNavigateToSow?: (proposalPackage?: any) => void;
   onNavigateToInvoice?: (proposalPackage?: any) => void;
+  onOpenMeet?: (params?: any) => void;
 }
 
 export const EngageVerify: React.FC<EngageVerifyProps> = ({
@@ -64,9 +66,10 @@ export const EngageVerify: React.FC<EngageVerifyProps> = ({
   onNavigateToIntake,
   onNavigateToBuild,
   onNavigateToSow,
-  onNavigateToInvoice
+  onNavigateToInvoice,
+  onOpenMeet
 }) => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   
   // Selection state
   const [selectedContract, setSelectedContract] = useState<any>(initialContract || null);
@@ -112,7 +115,9 @@ export const EngageVerify: React.FC<EngageVerifyProps> = ({
   useEffect(() => {
     const fetchContracts = async () => {
       try {
-        const q = query(collection(db, 'engagements'));
+        const q = user && !isAdmin
+          ? query(collection(db, 'engagements'), where('clientUid', '==', user.uid))
+          : query(collection(db, 'engagements'));
         const querySnapshot = await getDocs(q);
         const fetched: any[] = [];
         querySnapshot.forEach((doc) => {
@@ -415,6 +420,22 @@ export const EngageVerify: React.FC<EngageVerifyProps> = ({
 
         {/* Action Controls */}
         <div className="flex flex-wrap items-center gap-2">
+          {onOpenMeet && (
+            <button
+              onClick={() => {
+                onOpenMeet({
+                  initialPhase: 'phase3-verification',
+                  clientName: selectedContract?.clientName || 'Client Signer',
+                  agenda: `Phase 3 Acceptance & Verification Review: examine deterministic proof-pointer verdict table and approve milestone release.`
+                });
+              }}
+              className="px-3.5 py-2.5 bg-gold/10 hover:bg-gold/20 border border-gold/30 text-gold font-bold uppercase tracking-wider text-xs rounded-xl transition-all flex items-center gap-1.5 shadow-sm cursor-pointer"
+            >
+              <Video size={13} className="text-gold animate-pulse" />
+              <span className="hidden sm:inline">Meet</span> Acceptance Call
+            </button>
+          )}
+
           {/* Overseer Single Pass */}
           <button
             onClick={handleRunVerification}

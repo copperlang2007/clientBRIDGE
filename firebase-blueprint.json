@@ -290,6 +290,32 @@
         "createdAt": { "type": "string", "format": "date-time" }
       },
       "required": ["errorClass", "failureMode", "remedy"]
+    },
+    "meetings": {
+      "title": "Google Meet Client Meeting",
+      "description": "Google Meet spaces, scheduled discovery/sprint review calls, and in-app conference sessions",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Meeting ID" },
+        "title": { "type": "string", "description": "Meeting Title" },
+        "clientUid": { "type": "string", "description": "Client UID" },
+        "clientEmail": { "type": "string", "format": "email", "description": "Client Email" },
+        "clientName": { "type": "string", "description": "Client or Attendee Name" },
+        "hostUid": { "type": "string", "description": "Host User UID" },
+        "hostEmail": { "type": "string", "format": "email", "description": "Host Email" },
+        "spaceName": { "type": "string", "description": "Google Meet Space Resource Name (e.g. spaces/abc)" },
+        "meetingUri": { "type": "string", "description": "Google Meet Join URL (https://meet.google.com/xxx-yyyy-zzz)" },
+        "meetingCode": { "type": "string", "description": "Meeting Code (e.g. xxx-yyyy-zzz)" },
+        "accessType": { "type": "string", "enum": ["OPEN", "TRUSTED", "RESTRICTED"], "description": "Access Type" },
+        "status": { "type": "string", "enum": ["scheduled", "live", "completed", "cancelled"], "description": "Meeting status" },
+        "scheduledTime": { "type": "string", "format": "date-time", "description": "Scheduled start timestamp" },
+        "agenda": { "type": "string", "description": "Meeting agenda or discussion points" },
+        "linkedContractId": { "type": "string", "description": "Associated Engagement / SOW contract ID" },
+        "meetingPhase": { "type": "string", "enum": ["phase1-discovery", "phase2-sprint", "phase3-verify", "general"], "description": "Engagement phase" },
+        "notes": { "type": "string", "description": "Live meeting notes or transcript highlights" },
+        "createdAt": { "type": "string", "format": "date-time" }
+      },
+      "required": ["title", "meetingUri", "meetingCode", "status", "createdAt"]
     }
   },
   "firestore": {
@@ -308,6 +334,7 @@
     "/corpus_adapters/{adapterId}": { "schema": "corpus_adapters", "description": "Corpus adapter document" },
     "/fixtures/{fixtureId}": { "schema": "fixtures", "description": "Corpus fixture document" },
     "/verifications/{verificationId}": { "schema": "verifications", "description": "Verification execution record" },
-    "/error_remedies/{remedyId}": { "schema": "error_remedies", "description": "Harvested error remedy document" }
+    "/error_remedies/{remedyId}": { "schema": "error_remedies", "description": "Harvested error remedy document" },
+    "/meetings/{meetingId}": { "schema": "meetings", "description": "Google Meet client meeting document" }
   }
 }

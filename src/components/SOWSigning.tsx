@@ -5,6 +5,7 @@ import ReactMarkdown from 'react-markdown';
 import { doc, updateDoc, addDoc, collection } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 import { notifyAdmin } from '../lib/notifications';
+import { logAuditEvent } from '../services/auditLogger';
 
 interface SOWSigningProps {
   sow: any;
@@ -46,6 +47,27 @@ export const SOWSigning: React.FC<SOWSigningProps> = ({ sow, onClose }) => {
         `A new SOW "${sow.title}" has been signed by ${signature}. A new project has been automatically created.`,
         'alert'
       );
+
+      // Record in system audit log
+      await logAuditEvent({
+        action: 'SOW_DIGITALLY_SIGNED',
+        category: 'sow_signature',
+        actorEmail: sow.clientEmail || 'client@portal.user',
+        actorName: signature,
+        actorRole: 'client',
+        targetEntity: 'sow',
+        targetId: sow.id,
+        targetTitle: sow.title || 'Statement of Work',
+        previousValue: 'pending',
+        newValue: 'signed',
+        details: `SOW digitally signed with legal signature "${signature}". Auto-provisioned Project #${projectRef.id}.`,
+        metadata: {
+          signature,
+          projectId: projectRef.id,
+          cost: sow.cost,
+          signedAt
+        }
+      });
       
       onClose();
     } catch (err) {

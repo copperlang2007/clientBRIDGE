@@ -859,6 +859,301 @@ Provide a JSON output matching:
   });
 
   // ==========================================
+  // GOOGLE MEET CONFERENCING & GEMINI AI ROUTES
+  // ==========================================
+
+  // 1. AI Meeting Transcription & Task Extraction Endpoint
+  app.post("/api/meet/summarize-tasks", async (req, res) => {
+    try {
+      const { 
+        meetingTitle, 
+        meetingPhase, 
+        clientName, 
+        agenda, 
+        notes, 
+        transcript, 
+        linkedContractId, 
+        milestoneTitle 
+      } = req.body;
+
+      const ai = getGenAI();
+
+      const prompt = `You are the Lead Project Architect & Executive Synthesizer for artificialBRIDGE.
+Analyze the following Google Meet conference session notes, transcript, and agenda to produce an authoritative executive summary, identify critical scope/architectural decisions, and extract crisp, machine-actionable project tasks.
+
+SESSION CONTEXT:
+- Meeting Title: ${meetingTitle || 'Client Strategy Session'}
+- Engagement Phase: ${meetingPhase || 'general'}
+- Client / Stakeholder: ${clientName || 'Client Stakeholder'}
+- Milestone Tied: ${milestoneTitle || 'Milestone Deliverable'}
+- Contract ID: ${linkedContractId || 'N/A'}
+- Meeting Agenda: ${agenda || 'N/A'}
+
+RECORDED NOTES & SCRATCHPAD:
+${notes || 'No manual notes recorded during call.'}
+
+RECORDED TRANSCRIPT / DISCUSSION EXCERPT:
+${transcript || 'No direct audio transcript attached. Rely on recorded session notes and agenda.'}
+
+OPERATING MANDATES:
+1. Executive Summary: 2-3 precise, high-density sentences describing what was aligned, what was verified, or what changed.
+2. Key Decisions: Explicitly record technical, scope, boundary, and commercial decisions.
+3. Blockers & Risks: Surface any landmines, unmapped data formats, API access delays, or compliance questions.
+4. Actionable Tasks: Produce 3-8 concrete, high-value tasks with clear owners (e.g. "artificialBRIDGE Lead Engineer", "Client Lead", "Overseer QA"), priority (CRITICAL/HIGH/MEDIUM/LOW), target due dates (YYYY-MM-DD or relative like "Within 48h"), milestone phase, and deterministic verification criteria.
+5. Next Meeting Agenda: 2-4 recommended bullet points for the next touchpoint.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.7-flash",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              executiveSummary: { type: Type.STRING },
+              keyDecisions: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING } 
+              },
+              blockersAndRisks: { 
+                type: Type.ARRAY, 
+                items: { type: Type.STRING } 
+              },
+              actionableTasks: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    id: { type: Type.STRING },
+                    title: { type: Type.STRING },
+                    description: { type: Type.STRING },
+                    assignee: { type: Type.STRING },
+                    priority: { type: Type.STRING },
+                    milestone: { type: Type.STRING },
+                    dueDate: { type: Type.STRING },
+                    status: { type: Type.STRING },
+                    verificationCriteria: { type: Type.STRING }
+                  },
+                  required: ["id", "title", "description", "assignee", "priority", "milestone", "dueDate", "status", "verificationCriteria"]
+                }
+              },
+              milestoneImpact: { type: Type.STRING },
+              nextMeetingAgenda: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              clientSentiment: { type: Type.STRING }
+            },
+            required: ["executiveSummary", "keyDecisions", "blockersAndRisks", "actionableTasks", "milestoneImpact", "nextMeetingAgenda", "clientSentiment"]
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      res.json({
+        status: "success",
+        generatedAt: new Date().toISOString(),
+        summary: parsed
+      });
+    } catch (error) {
+      console.error("Meeting summarizer error:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate meeting summary and tasks" });
+    }
+  });
+
+  // 2. Real-Time Meeting Sentiment & Emotional Tone Analyzer Endpoint
+  app.post("/api/meet/sentiment-analysis", async (req, res) => {
+    try {
+      const { meetingTitle, transcript, notes, agenda, meetingPhase } = req.body;
+      const ai = getGenAI();
+
+      const prompt = `You are the Real-Time Emotional Tone & Psychological Dynamics Analyst for artificialBRIDGE executive meetings.
+Analyze the following meeting transcript, live scratchpad, and discussion context to provide a real-time sentiment gauge and emotional tone breakdown.
+
+MEETING CONTEXT:
+- Title: ${meetingTitle || 'Client Strategy Session'}
+- Phase: ${meetingPhase || 'General'}
+- Agenda: ${agenda || 'General client discussion'}
+
+DISCUSSION TRANSCRIPT & LIVE NOTES:
+${transcript || notes || 'Active discussion beginning. Participants are aligning on project goals and milestones.'}
+
+ANALYTICAL MANDATES:
+1. Determine the dominant 'overallTone' from:
+   - "Collaborative & Constructive"
+   - "Productive / Action-Oriented"
+   - "Analytical & Cautious"
+   - "Tense / High Scrutiny"
+   - "Creative & Visionary"
+   - "Skeptical / Scope-Sensitive"
+2. Calculate 'sentimentScore' (-100 = intensely negative/friction, 0 = neutral, +100 = euphoric/unanimous alignment).
+3. Compute 0-100 metrics for 'collaborationIndex', 'clarityScore', and 'alignmentConfidence'.
+4. Provide 3-4 'emotionalPillars' (e.g. Stakeholder Trust, Scope Clarity, Delivery Momentum, Commercial Openness) with 0-100 scores and brief descriptions.
+5. Provide 2-3 immediate, actionable 'liveTacticalAdvice' recommendations for meeting facilitators / participants.
+6. Extract 2-3 'keyMomentQuotes' illustrating the emotional trajectory.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.7-flash",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              overallTone: { type: Type.STRING },
+              sentimentScore: { type: Type.NUMBER },
+              collaborationIndex: { type: Type.NUMBER },
+              clarityScore: { type: Type.NUMBER },
+              alignmentConfidence: { type: Type.NUMBER },
+              toneBadgeColor: { type: Type.STRING },
+              emotionalPillars: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    name: { type: Type.STRING },
+                    score: { type: Type.NUMBER },
+                    description: { type: Type.STRING }
+                  },
+                  required: ["name", "score", "description"]
+                }
+              },
+              liveTacticalAdvice: {
+                type: Type.ARRAY,
+                items: { type: Type.STRING }
+              },
+              keyMomentQuotes: {
+                type: Type.ARRAY,
+                items: {
+                  type: Type.OBJECT,
+                  properties: {
+                    speaker: { type: Type.STRING },
+                    text: { type: Type.STRING },
+                    sentimentImpact: { type: Type.STRING }
+                  },
+                  required: ["speaker", "text", "sentimentImpact"]
+                }
+              }
+            },
+            required: [
+              "overallTone",
+              "sentimentScore",
+              "collaborationIndex",
+              "clarityScore",
+              "alignmentConfidence",
+              "toneBadgeColor",
+              "emotionalPillars",
+              "liveTacticalAdvice",
+              "keyMomentQuotes"
+            ]
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      res.json({
+        status: "success",
+        sentiment: {
+          ...parsed,
+          analyzedAt: new Date().toISOString()
+        }
+      });
+    } catch (error) {
+      console.error("Sentiment analysis error:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to analyze meeting sentiment" });
+    }
+  });
+
+  // 3. AI Strategic Voice Agent Intervention Endpoint
+  app.post("/api/meet/agent-intervene", async (req, res) => {
+    try {
+      const { 
+        personaId,
+        personaName,
+        role,
+        systemPrompt,
+        customInstructions,
+        knowledgeSnippets,
+        communicationStyle,
+        userQuery,
+        meetingTitle,
+        meetingPhase,
+        clientName,
+        notes,
+        transcript,
+        agenda,
+        milestoneTitle
+      } = req.body;
+
+      const ai = getGenAI();
+
+      let knowledgeSection = '';
+      if (Array.isArray(knowledgeSnippets) && knowledgeSnippets.length > 0) {
+        knowledgeSection = `\nDOMAIN KNOWLEDGE BASE & AUDIT DIRECTIVES INJECTED FOR YOU:\n` +
+          knowledgeSnippets.map((k: { title?: string; category?: string; content?: string }, i: number) => 
+            `[SNIPPET ${i + 1}: ${k.title || 'Directive'} (${k.category || 'general'})]\n${k.content || ''}`
+          ).join('\n\n') + '\n';
+      }
+
+      let customInstructionsSection = '';
+      if (customInstructions && typeof customInstructions === 'string' && customInstructions.trim()) {
+        customInstructionsSection = `\nSPECIAL USER DIRECTIVES & PRE-MEETING INSTRUCTIONS FOR THIS SESSION:\n${customInstructions.trim()}\n`;
+      }
+
+      const prompt = `${systemPrompt || 'You are an autonomous AI specialist attending an executive client meeting.'}
+${customInstructionsSection}
+${knowledgeSection}
+CURRENT MEETING CONTEXT:
+- Session Title: ${meetingTitle || 'Client Session'}
+- Phase: ${meetingPhase || 'General'}
+- Client: ${clientName || 'Client Stakeholder'}
+- Milestone Anchor: ${milestoneTitle || 'General Deliverable'}
+- Agenda: ${agenda || 'N/A'}
+
+CURRENT LIVE DISCUSSION TRANSCRIPT:
+${transcript || 'Meeting in progress.'}
+
+RECORDED SCRATCHPAD & AGREED BOUNDARIES:
+${notes || 'No manual notes.'}
+
+${userQuery ? `DIRECT QUESTION TO YOU (${personaName}):\n"${userQuery}"` : `AUTONOMOUS INTERVENTION TRIGGER: Contribute a timely, highly relevant insight based on the current discussion that advances the meeting, clarifies technical/commercial boundaries, references your domain knowledge snippets when applicable, or guides consensus.`}
+
+INTERVENTION GUIDELINES:
+1. Spoken Text ('spokenText'): 2 to 3 concise, natural, spoken sentences in character. Sound like a sharp human colleague in a live room (conversational, professional, authentic, no robotic prefixes like "As an AI").
+2. Key Point ('keyPoint'): 1 crisp sentence summarizing your core stance or recommendation.
+3. Suggested Action ('suggestedAction'): Concrete next step for the room.
+4. Confidence Score ('confidenceScore'): 0.0 to 1.0.`;
+
+      const response = await ai.models.generateContent({
+        model: "gemini-3.7-flash",
+        contents: [{ parts: [{ text: prompt }] }],
+        config: {
+          responseMimeType: "application/json",
+          responseSchema: {
+            type: Type.OBJECT,
+            properties: {
+              spokenText: { type: Type.STRING },
+              keyPoint: { type: Type.STRING },
+              suggestedAction: { type: Type.STRING },
+              confidenceScore: { type: Type.NUMBER }
+            },
+            required: ["spokenText", "keyPoint", "suggestedAction", "confidenceScore"]
+          }
+        }
+      });
+
+      const parsed = JSON.parse(response.text || '{}');
+      res.json({
+        status: "success",
+        ...parsed
+      });
+    } catch (error) {
+      console.error("Agent intervention error:", error);
+      res.status(500).json({ error: error instanceof Error ? error.message : "Failed to generate agent intervention" });
+    }
+  });
+
+  // ==========================================
   // STRIPE & PAYMENT ROUTES
   // ==========================================
   app.post("/api/create-checkout-session", async (req, res) => {

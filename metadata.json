@@ -1,6 +1,6 @@
 {
   "name": "artificialBRIDGE Client Portal",
-  "description": "Enterprise engagement operating system featuring Engage-Intake (Phase 1) with chat/voice interviews and Rubric v1 AC generation, Engage-Build (Phase 2) deterministic execution engine with reusable corpus adapters and W0.3 taxonomy, SOW signing, and client payment portals.",
-  "requestFramePermissions": ["microphone"],
+  "description": "Enterprise engagement operating system featuring Google Meet client conferencing, Engage-Intake (Phase 1) with chat/voice interviews and Rubric v1 AC generation, Engage-Build (Phase 2) deterministic execution engine with reusable corpus adapters, Engage-Verify (Phase 3) acceptance overseer, SOW signing, and client payment portals.",
+  "requestFramePermissions": ["camera", "microphone", "display-capture"],
   "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
 }

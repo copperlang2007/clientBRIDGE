@@ -1,10 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
-import { FileText, Plus, Send, Trash2, Edit3, CheckCircle, AlertCircle, User, ShieldCheck, Search, X, Loader2, PenTool, Briefcase } from 'lucide-react';
+import { FileText, Plus, Send, Trash2, Edit3, CheckCircle, AlertCircle, User, ShieldCheck, Search, X, Loader2, PenTool, Briefcase, Sparkles, Upload, FileUp, Download } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { collection, addDoc, onSnapshot, query, orderBy, getDocs, updateDoc, doc } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, getDocs, updateDoc, doc, deleteDoc } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 import { SOWSigning } from './SOWSigning';
+import { analyzeSOWSmartSummary, SOWSmartSummaryResult } from '../services/smartSummaryService';
+import { SmartSummaryModal } from './SmartSummaryModal';
+import { logAuditEvent } from '../services/auditLogger';
 
 interface DocumentArchitectProps {
   initialProposalPackage?: any;
@@ -24,6 +27,12 @@ export const DocumentArchitect: React.FC<DocumentArchitectProps> = ({ initialPro
   const [activeReview, setActiveReview] = useState<any[] | null>(null);
   const [viewMode, setViewMode] = useState<'architect' | 'history'>('architect');
   const [selectedSowForSigning, setSelectedSowForSigning] = useState<any | null>(null);
+
+  // Smart Summary States
+  const [smartSummaryResult, setSmartSummaryResult] = useState<SOWSmartSummaryResult | null>(null);
+  const [isSmartSummarizing, setIsSmartSummarizing] = useState<boolean>(false);
+  const [isDraggingFile, setIsDraggingFile] = useState<boolean>(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   // New detailed fields
   const [sowDescription, setSowDescription] = useState('');
@@ -151,11 +160,91 @@ export const DocumentArchitect: React.FC<DocumentArchitectProps> = ({ initialPro
       setSowCost('');
       setMarkAsSigned(false);
       setViewMode('history');
+
+      // Log SOW creation
+      await logAuditEvent({
+        action: 'SOW_CREATED',
+        category: 'sow_signature',
+        actorEmail: 'admin@theartificialbridge.com',
+        actorName: 'Lead Architect',
+        actorRole: 'admin',
+        targetEntity: 'sow',
+        targetId: sowRef.id,
+        targetTitle: title,
+        previousValue: 'none',
+        newValue: markAsSigned ? 'signed' : 'pending',
+        details: `Architected Statement of Work "${title}" for client ${client?.displayName || client?.email || selectedClient}.`
+      });
     } catch (error) {
       console.error('Generation failed:', error);
     } finally {
       setIsGenerating(false);
     }
+  };
+
+  const handleRunSmartSummary = async (contentToAnalyze?: string, titleToAnalyze?: string) => {
+    const rawContent = contentToAnalyze || sowDescription || prompt;
+    if (!rawContent || rawContent.trim().length === 0) {
+      alert('Please enter or select SOW details/file to generate a Smart Summary.');
+      return;
+    }
+
+    setIsSmartSummarizing(true);
+    try {
+      const result = await analyzeSOWSmartSummary(rawContent, titleToAnalyze || 'Statement of Work Draft');
+      setSmartSummaryResult(result);
+
+      // Record in audit log
+      await logAuditEvent({
+        action: 'SMART_SUMMARY_ANALYZED',
+        category: 'system_event',
+        actorEmail: 'admin@theartificialbridge.com',
+        actorName: 'Lead Architect',
+        actorRole: 'admin',
+        targetEntity: 'sow',
+        targetId: 'sow-analysis',
+        targetTitle: titleToAnalyze || 'SOW Smart Summary',
+        details: `Gemini analyzed SOW. Extracted ${result.keyMilestoneDates.length} milestone checkpoints and ${result.potentialRisks.length} risk indicators with ${result.confidenceScore}% confidence.`
+      });
+    } catch (error) {
+      console.error('Smart summary error:', error);
+    } finally {
+      setIsSmartSummarizing(false);
+    }
+  };
+
+  const handleFileDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDraggingFile(false);
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      processSOWFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      processSOWFile(e.target.files[0]);
+    }
+  };
+
+  const processSOWFile = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = async (event) => {
+      const fileText = event.target?.result as string;
+      if (fileText) {
+        setSowDescription(fileText);
+        setPrompt(`Uploaded SOW: ${file.name}`);
+        // Automatically trigger Smart Summary analysis on the uploaded SOW file!
+        await handleRunSmartSummary(fileText, file.name.replace(/\.[^/.]+$/, ''));
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const handleApplyMilestonesFromSummary = (milestones: any[]) => {
+    if (!milestones || milestones.length === 0) return;
+    const formattedTimeline = milestones.map(m => `${m.milestone} (${m.targetDate}): ${m.deliverable}`).join(' | ');
+    setSowTimeline(formattedTimeline);
   };
   
   const handleReview = async (sow: any) => {
@@ -316,10 +405,46 @@ export const DocumentArchitect: React.FC<DocumentArchitectProps> = ({ initialPro
               </div>
             </div>
 
-            <div className="flex items-center gap-3">
+            {/* Upload SOW File / Dropzone for Smart Summary & Auto-population */}
+            <div 
+              onDragOver={(e) => { e.preventDefault(); setIsDraggingFile(true); }}
+              onDragLeave={() => setIsDraggingFile(false)}
+              onDrop={handleFileDrop}
+              onClick={() => fileInputRef.current?.click()}
+              className={`p-4 md:p-5 border-2 border-dashed rounded-2xl cursor-pointer transition-all flex flex-col sm:flex-row items-center justify-between gap-4 ${
+                isDraggingFile 
+                  ? 'border-gold bg-gold/15 scale-[1.01]' 
+                  : 'border-gold/20 bg-vanta/40 hover:border-gold/40 hover:bg-gold/5'
+              }`}
+            >
+              <input 
+                ref={fileInputRef} 
+                type="file" 
+                accept=".txt,.md,.json,.pdf,.doc,.docx" 
+                onChange={handleFileInputChange} 
+                className="hidden" 
+              />
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gold/10 border border-gold/20 flex items-center justify-center text-gold shrink-0">
+                  <FileUp size={18} />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-oat">Upload SOW Document / Drop File Here</p>
+                  <p className="text-[9px] font-mono text-oat/40">Supports .txt, .md, .json, .pdf (extracts text & auto-triggers Smart Summary)</p>
+                </div>
+              </div>
+              <button
+                type="button"
+                className="px-3 py-1.5 bg-gold/10 text-gold border border-gold/20 rounded-xl text-[10px] font-mono uppercase tracking-wider hover:bg-gold/20 transition-colors shrink-0"
+              >
+                Browse File
+              </button>
+            </div>
+
+            <div className="flex flex-col sm:flex-row items-center gap-3">
               <button
                 onClick={() => setMarkAsSigned(!markAsSigned)}
-                className={`flex items-center gap-2 px-3 py-1.5 rounded-lg border transition-all ${
+                className={`w-full sm:w-auto flex items-center justify-center gap-2 px-3 py-2 rounded-lg border transition-all ${
                   markAsSigned 
                     ? 'bg-gold/20 border-gold text-gold' 
                     : 'bg-vanta border-gold/10 text-oat/40 hover:border-gold/30'
@@ -328,9 +453,27 @@ export const DocumentArchitect: React.FC<DocumentArchitectProps> = ({ initialPro
                 <CheckCircle size={14} />
                 <span className="text-[10px] font-mono uppercase tracking-widest">Generate as Signed</span>
               </button>
-              <p className="text-[8px] font-mono text-oat/20 uppercase tracking-widest">
-                {markAsSigned ? 'Will automatically create an active project' : 'Will create a pending SOW for client review'}
-              </p>
+
+              {/* Smart Summary Button */}
+              <button
+                type="button"
+                onClick={() => handleRunSmartSummary()}
+                disabled={isSmartSummarizing || (!sowDescription && !prompt)}
+                className="w-full sm:w-auto flex-1 py-3 px-4 bg-gradient-to-r from-amber-500/20 via-gold/20 to-amber-500/20 border border-gold/40 text-gold hover:bg-gold/30 font-bold rounded-xl flex items-center justify-center gap-2 transition-all disabled:opacity-40 disabled:cursor-not-allowed text-xs font-mono uppercase tracking-wider shadow-sm"
+                title="Use Gemini 3.7 Flash to analyze risks and key milestones"
+              >
+                {isSmartSummarizing ? (
+                  <>
+                    <Loader2 size={15} className="animate-spin text-gold" />
+                    <span>Analyzing Risks & Milestones...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles size={15} className="text-gold animate-pulse" />
+                    <span>Smart Summary</span>
+                  </>
+                )}
+              </button>
             </div>
 
             <button
@@ -436,6 +579,16 @@ export const DocumentArchitect: React.FC<DocumentArchitectProps> = ({ initialPro
                   )}
                   
                   <div className="flex items-center gap-1 md:gap-2 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Smart Summary Action */}
+                    <button
+                      onClick={() => handleRunSmartSummary(doc.content, doc.title)}
+                      disabled={isSmartSummarizing}
+                      className="p-2 text-gold/60 hover:text-gold hover:bg-gold/10 rounded-lg transition-colors"
+                      title="AI Smart Summary (Milestones & Risks)"
+                    >
+                      <Sparkles size={14} className="md:w-4 md:h-4 text-gold" />
+                    </button>
+
                     <button 
                       onClick={() => {
                         if (doc.reviewFeedback && reviewingId !== doc.id) {
@@ -457,7 +610,20 @@ export const DocumentArchitect: React.FC<DocumentArchitectProps> = ({ initialPro
                     </button>
                     <button className="p-2 text-oat/40 hover:text-gold transition-colors"><Edit3 size={14} className="md:w-4 md:h-4" /></button>
                     <button className="p-2 text-oat/40 hover:text-gold transition-colors"><Send size={14} className="md:w-4 md:h-4" /></button>
-                    <button className="p-2 text-oat/40 hover:text-destructive transition-colors"><Trash2 size={14} className="md:w-4 md:h-4" /></button>
+                    <button 
+                      onClick={async () => {
+                        if (confirm(`Delete SOW "${doc.title}"?`)) {
+                          try {
+                            await deleteDoc(doc(db, 'sows', doc.id));
+                          } catch (err) {
+                            handleFirestoreError(err, OperationType.DELETE, `sows/${doc.id}`);
+                          }
+                        }
+                      }}
+                      className="p-2 text-oat/40 hover:text-destructive transition-colors"
+                    >
+                      <Trash2 size={14} className="md:w-4 md:h-4" />
+                    </button>
                   </div>
                 </div>
               </div>
@@ -516,6 +682,13 @@ export const DocumentArchitect: React.FC<DocumentArchitectProps> = ({ initialPro
       <AnimatePresence>
         {selectedSowForSigning && (
           <SOWSigning sow={selectedSowForSigning} onClose={() => setSelectedSowForSigning(null)} />
+        )}
+        {smartSummaryResult && (
+          <SmartSummaryModal 
+            summary={smartSummaryResult} 
+            onClose={() => setSmartSummaryResult(null)}
+            onApplyMilestones={handleApplyMilestonesFromSummary}
+          />
         )}
       </AnimatePresence>
     </div>

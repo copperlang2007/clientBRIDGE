@@ -1,10 +1,12 @@
 import React, { useState, useEffect } from 'react';
 import { motion } from 'motion/react';
-import { CreditCard, Plus, Trash2, CheckCircle, AlertCircle, Briefcase, Bell, Calendar as CalendarIcon, ExternalLink } from 'lucide-react';
+import { CreditCard, Plus, Trash2, CheckCircle, AlertCircle, Briefcase, Bell, Calendar as CalendarIcon, ExternalLink, Download, FileText } from 'lucide-react';
 import { GoogleGenAI, Type } from "@google/genai";
-import { collection, addDoc, onSnapshot, query, orderBy, getDocs, serverTimestamp } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, getDocs, serverTimestamp, deleteDoc, doc } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 import { sendNotification } from '../lib/notifications';
+import { exportInvoiceToPDF } from '../services/invoicePdfExport';
+import { logAuditEvent } from '../services/auditLogger';
 
 interface InvoiceArchitectProps {
   initialProposalPackage?: any;
@@ -74,7 +76,7 @@ export const InvoiceArchitect: React.FC<InvoiceArchitectProps> = ({ initialPropo
       
       const result = JSON.parse(response.text);
 
-      await addDoc(collection(db, 'invoices'), {
+      const docRef = await addDoc(collection(db, 'invoices'), {
         projectId: selectedProject,
         clientUid: project.clientUid,
         amount: result.amount,
@@ -91,6 +93,25 @@ export const InvoiceArchitect: React.FC<InvoiceArchitectProps> = ({ initialPropo
         message: `A new invoice for "${project.title}" has been generated. Amount: $${(result.amount / 100).toLocaleString()}.`,
         type: 'update'
       });
+
+      // Record in audit log
+      await logAuditEvent({
+        action: 'INVOICE_GENERATED',
+        category: 'payment_completion',
+        actorEmail: 'admin@theartificialbridge.com',
+        actorName: 'Lead Architect',
+        actorRole: 'admin',
+        targetEntity: 'invoice',
+        targetId: docRef.id,
+        targetTitle: `Invoice for ${project.title}`,
+        previousValue: 'none',
+        newValue: 'unpaid',
+        details: `Generated Invoice #${docRef.id.slice(0, 8)} for $${(result.amount / 100).toLocaleString()} (Due: ${new Date(dueDate).toLocaleDateString()}).`,
+        metadata: {
+          projectId: selectedProject,
+          amountCents: result.amount
+        }
+      });
       
       setPrompt('');
       setSelectedProject('');
@@ -98,6 +119,34 @@ export const InvoiceArchitect: React.FC<InvoiceArchitectProps> = ({ initialPropo
       console.error('Generation failed:', error);
     } finally {
       setIsGenerating(false);
+    }
+  };
+
+  const handleDownloadPDF = (invoice: any) => {
+    const project = projects.find(p => p.id === invoice.projectId);
+    exportInvoiceToPDF({
+      id: invoice.id,
+      projectId: invoice.projectId,
+      projectTitle: project?.title || 'Client Project',
+      clientUid: invoice.clientUid,
+      clientName: invoice.clientName || project?.title?.split(' - ')[0] || 'Enterprise Client',
+      clientEmail: invoice.clientEmail,
+      amount: invoice.amount,
+      description: invoice.description || 'Milestone Implementation & AI Acceptance Verification',
+      status: invoice.status,
+      dueDate: invoice.dueDate,
+      createdAt: invoice.createdAt,
+      paidAt: invoice.paidAt,
+      stripeSessionId: invoice.stripeSessionId
+    });
+  };
+
+  const handleDeleteInvoice = async (invoiceId: string) => {
+    if (!confirm('Are you sure you want to delete this invoice?')) return;
+    try {
+      await deleteDoc(doc(db, 'invoices', invoiceId));
+    } catch (err) {
+      handleFirestoreError(err, OperationType.DELETE, `invoices/${invoiceId}`);
     }
   };
 
@@ -262,6 +311,15 @@ export const InvoiceArchitect: React.FC<InvoiceArchitectProps> = ({ initialPropo
                     </div>
                     
                     <div className="flex items-center gap-1 md:gap-2 sm:opacity-0 group-hover:opacity-100 transition-opacity">
+                      {/* PDF Export Action */}
+                      <button
+                        onClick={() => handleDownloadPDF(inv)}
+                        className="p-2 text-gold/60 hover:text-gold hover:bg-gold/10 rounded-lg transition-colors"
+                        title="Download Professional PDF Invoice"
+                      >
+                        <Download size={14} className="md:w-4 md:h-4" />
+                      </button>
+
                       {inv.status === 'unpaid' && (
                         <>
                           <button 
@@ -285,7 +343,13 @@ export const InvoiceArchitect: React.FC<InvoiceArchitectProps> = ({ initialPropo
                           </button>
                         </>
                       )}
-                      <button className="p-2 text-oat/40 hover:text-destructive transition-colors"><Trash2 size={14} className="md:w-4 md:h-4" /></button>
+                      <button 
+                        onClick={() => handleDeleteInvoice(inv.id)}
+                        className="p-2 text-oat/40 hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                        title="Delete Invoice"
+                      >
+                        <Trash2 size={14} className="md:w-4 md:h-4" />
+                      </button>
                     </div>
                   </div>
                 </motion.div>

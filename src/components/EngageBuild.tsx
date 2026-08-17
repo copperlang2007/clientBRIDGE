@@ -22,7 +22,8 @@ import {
   ExternalLink,
   Code2,
   Copy,
-  Check
+  Check,
+  Video
 } from 'lucide-react';
 import { INITIAL_CORPUS_ADAPTERS, SYNTHETIC_FIXTURES, CorpusAdapter, SyntheticFixture } from '../data/corpusAdapters';
 import { SYNTHETIC_PRESETS } from '../data/syntheticPresets';
@@ -34,14 +35,16 @@ interface EngageBuildProps {
   initialContract?: any;
   onNavigateToIntake?: () => void;
   onNavigateToVerify?: (buildRunPayload?: any) => void;
+  onOpenMeet?: (params?: any) => void;
 }
 
 export const EngageBuild: React.FC<EngageBuildProps> = ({
   initialContract,
   onNavigateToIntake,
-  onNavigateToVerify
+  onNavigateToVerify,
+  onOpenMeet
 }) => {
-  const { user } = useAuth();
+  const { user, isAdmin } = useAuth();
   const [selectedContract, setSelectedContract] = useState<any>(initialContract || null);
   const [availableEngagements, setAvailableEngagements] = useState<any[]>([]);
   const [corpusAdapters, setCorpusAdapters] = useState<CorpusAdapter[]>(INITIAL_CORPUS_ADAPTERS);
@@ -66,7 +69,9 @@ export const EngageBuild: React.FC<EngageBuildProps> = ({
   useEffect(() => {
     async function loadContracts() {
       try {
-        const q = query(collection(db, 'engagements'));
+        const q = user && !isAdmin
+          ? query(collection(db, 'engagements'), where('clientUid', '==', user.uid))
+          : query(collection(db, 'engagements'));
         const snap = await getDocs(q);
         const fetched: any[] = [];
         snap.forEach(doc => {
@@ -282,6 +287,21 @@ export const EngageBuild: React.FC<EngageBuildProps> = ({
         </div>
 
         <div className="flex items-center gap-2">
+          {onOpenMeet && (
+            <button
+              onClick={() => {
+                onOpenMeet({
+                  initialPhase: 'phase2-sprint',
+                  clientName: selectedContract?.clientName || 'Client Team',
+                  agenda: `Phase 2 Sprint Review: review deterministic pipeline execution and staged evidence for ${selectedContract?.winningWedge || 'W0.2 Contract'}.`
+                });
+              }}
+              className="px-3.5 py-2.5 rounded-xl bg-gold/10 hover:bg-gold/20 border border-gold/30 text-gold text-xs font-mono uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-sm cursor-pointer"
+            >
+              <Video size={14} className="text-gold animate-pulse" />
+              <span className="hidden sm:inline">Meet</span> Sprint Review
+            </button>
+          )}
           {onNavigateToIntake && (
             <button
               onClick={onNavigateToIntake}

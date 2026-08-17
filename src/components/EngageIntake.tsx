@@ -4,9 +4,9 @@ import {
   Mic, MicOff, MessageSquare, Volume2, VolumeX, Send, Sparkles, 
   ShieldCheck, AlertTriangle, CheckCircle2, ChevronRight, RefreshCw, 
   Award, FileText, ArrowRight, Layers, Lock, Database, Compass, 
-  Scale, FileSignature, HelpCircle, Play, Pause, ExternalLink, Check, Copy
+  Scale, FileSignature, HelpCircle, Play, Pause, ExternalLink, Check, Copy, Video
 } from 'lucide-react';
-import { collection, addDoc, onSnapshot, query, orderBy } from 'firebase/firestore';
+import { collection, addDoc, onSnapshot, query, orderBy, where } from 'firebase/firestore';
 import { db, OperationType, handleFirestoreError } from '../firebase';
 import { useAuth } from '../contexts/AuthContext';
 import { SYNTHETIC_PRESETS, SyntheticPreset } from '../data/syntheticPresets';
@@ -106,7 +106,8 @@ export const EngageIntake: React.FC<{
   initialContract?: any;
   onNavigateToSow?: () => void;
   onNavigateToBuild?: (contract?: any) => void;
-}> = ({ initialContract, onNavigateToSow, onNavigateToBuild }) => {
+  onOpenMeet?: (params?: any) => void;
+}> = ({ initialContract, onNavigateToSow, onNavigateToBuild, onOpenMeet }) => {
   const { user, profile, isAdmin } = useAuth();
   const [mode, setMode] = useState<'chat' | 'voice'>('chat');
   const [activeTab, setActiveTab] = useState<'interview' | 'rubric' | 'contract' | 'corpus'>('interview');
@@ -212,17 +213,26 @@ ${(initialContract.passConditions || ['100% deterministic matching with <0.01% e
     }
   }, [initialContract]);
 
-  // Fetch saved engagements from Firestore
+  // Fetch saved engagements from Firestore scoped by role
   useEffect(() => {
+    if (!user) return;
+    const engagementsQuery = isAdmin
+      ? query(collection(db, 'engagements'), orderBy('createdAt', 'desc'))
+      : query(
+          collection(db, 'engagements'),
+          where('clientUid', '==', user.uid),
+          orderBy('createdAt', 'desc')
+        );
+
     const unsub = onSnapshot(
-      query(collection(db, 'engagements'), orderBy('createdAt', 'desc')),
+      engagementsQuery,
       (snapshot) => {
         setSavedEngagements(snapshot.docs.map(d => ({ id: d.id, ...d.data() })));
       },
       (err) => handleFirestoreError(err, OperationType.LIST, 'engagements')
     );
     return () => unsub();
-  }, []);
+  }, [user, isAdmin]);
 
   // Scroll to bottom on new messages
   useEffect(() => {
@@ -648,6 +658,23 @@ ${preset.candidateWedges.filter(w => w.status === 'parked_next_wedge').map(w => 
             }`}
           >
             {soundEnabled ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+
+          {/* Google Meet Live Discovery Call */}
+          <button
+            onClick={() => {
+              if (onOpenMeet) {
+                onOpenMeet({
+                  initialPhase: 'phase1-discovery',
+                  clientName: evaluation?.companyName || 'Client Stakeholder',
+                  agenda: 'Phase 1 Discovery interview: scoping target workflow, baseline error costs, and formulating W0.2 Acceptance Contract.'
+                });
+              }
+            }}
+            className="px-3.5 py-2 rounded-xl bg-gold/10 hover:bg-gold/20 border border-gold/30 text-gold text-xs font-mono uppercase tracking-wider flex items-center gap-2 transition-all shadow-sm cursor-pointer"
+          >
+            <Video size={14} className="text-gold animate-pulse" />
+            <span className="hidden sm:inline">Launch</span> Google Meet Call
           </button>
         </div>
       </div>
