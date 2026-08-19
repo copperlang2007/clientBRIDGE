@@ -1,0 +1,41 @@
+# STAGING LOCATION ONLY.
+# This file must live at .github/workflows/firestore-rules.yml to run.
+# It was committed here because the API token used to open PR #4 lacks the
+# GitHub "workflow" scope and cannot write into .github/workflows/.
+# To activate:
+#   git mv ci/firestore-rules.yml .github/workflows/firestore-rules.yml
+#   git commit -m "SEC-001: activate rules CI gate" && git push
+name: firestore-rules
+on:
+  pull_request:
+    paths:
+      - 'firestore.rules'
+      - 'tests/firestore.rules.test.ts'
+      - '.github/workflows/firestore-rules.yml'
+  push:
+    branches: [main]
+jobs:
+  rules:
+    name: rules regression (SEC-001)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: oven-sh/setup-bun@v2
+        with:
+          bun-version: latest
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - name: Install dependencies
+        run: bun install
+      - name: Assert no extra hardcoded admin emails (REQ-002)
+        run: |
+          COUNT=$(grep -c 'token.email ==' firestore.rules || true)
+          if [ "$COUNT" -gt 1 ]; then
+            echo "REQ-002 violated: $COUNT hardcoded email identities in firestore.rules"
+            grep -n 'token.email ==' firestore.rules
+            exit 1
+          fi
+      - name: Run rules regression suite
+        run: bunx firebase emulators:exec --only firestore "bunx vitest run tests/firestore.rules.test.ts"
