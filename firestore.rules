@@ -1,61 +1,57 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    // ===============================================================
-    // Assumed Data Model
-    // ===============================================================
-    // Collection: users
-    // Fields: uid (string), email (string), displayName (string), role (string: admin|client), createdAt (timestamp)
-    //
-    // Collection: projects
-    // Fields: id (string), title (string), clientUid (string), status (string), deliverables (list), createdAt (timestamp)
-    //
-    // Collection: invoices
-    // Fields: id (string), projectId (string), clientUid (string), amount (number), status (string), createdAt (timestamp)
-    // ===============================================================
 
-    // Helper Functions
+    // SECURITY BOUNDARY
+    // This repository is PUBLIC. These rules are the only thing standing
+    // between an anonymous signup and every client's invoices, SOWs and
+    // acceptance verdicts. Treat this file as production code.
+    // Invariants: a principal never assigns their own role; a verdict is
+    // written by an operator and is immutable; audit_logs are append-only;
+    // admin resolves from a verified identity, never a bare email string.
+    // Do not modify without running tests/firestore.rules.test.ts.
+
     function isAuthenticated() {
       return request.auth != null;
     }
 
-    function isAdmin() {
-      return isAuthenticated() && (
-        request.auth.token.email == "Lang@theartificialbridge.com" ||
-        request.auth.token.email == "mlang@team-iia.com" ||
-        request.auth.token.email == "admin@demo.com" ||
-        (
-          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
-          get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
-        )
-      );
+    function isVerified() {
+      return isAuthenticated() && request.auth.token.email_verified == true;
     }
 
-    function hasPermission(permission) {
-      return isAuthenticated() && (
-        request.auth.token.email == "Lang@theartificialbridge.com" ||
-        request.auth.token.email == "mlang@team-iia.com" ||
-        request.auth.token.email == "admin@demo.com" ||
-        (
-          exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+    // Bootstrap owner. Retained only until custom claims are provisioned.
+    function isBootstrapOwner() {
+      return isVerified() && request.auth.token.email == "Lang@theartificialbridge.com";
+    }
+
+    function isAdmin() {
+      return isBootstrapOwner() || (
+        isVerified() && (
+          request.auth.token.admin == true ||
           (
-            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
-            (
-              get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role != 'client' &&
-              exists(/databases/$(database)/documents/roles/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)) &&
-              get(/databases/$(database)/documents/roles/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)).data.permissions[permission] == true
-            )
+            exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+            get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin'
           )
         )
       );
     }
 
-    function isOwner(userId) {
-      return isAuthenticated() && request.auth.uid == userId;
+    function hasPermission(permission) {
+      return isAdmin() || (
+        isVerified() &&
+        exists(/databases/$(database)/documents/users/$(request.auth.uid)) &&
+        get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role != 'client' &&
+        exists(/databases/$(database)/documents/roles/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)) &&
+        get(/databases/$(database)/documents/roles/$(get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role)).data.permissions[permission] == true
+      );
     }
 
-    function isDocOwner() {
-      return isAuthenticated() && request.auth.uid == resource.data.uid;
+    function isOperator() {
+      return isAdmin() || hasPermission('manageProjects');
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
     }
 
     function isValidUser(data) {
@@ -144,7 +140,8 @@ service cloud.firestore {
     function isValidObjection(data) {
       return data.keys().hasAll(['objection', 'createdAt']) &&
              data.objection is string && data.objection.size() < 5000 &&
-             data.createdAt is string;
+             data.createdAt is string &&
+             (!('priceAtObjection' in data) || data.priceAtObjection is number);
     }
 
     function isValidBuildRun(data) {
@@ -183,26 +180,54 @@ service cloud.firestore {
              data.remedy is string;
     }
 
+    function isValidEstimate(data) {
+      return data.keys().hasAll(['engagementId', 'vertical', 'quotedAmount', 'outcome', 'createdAt']) &&
+             data.engagementId is string &&
+             data.vertical is string &&
+             data.quotedAmount is number && data.quotedAmount >= 0 &&
+             data.outcome in ['quoted', 'won', 'lost', 'renegotiated', 'delivered_unbilled', 'delivered_discounted'] &&
+             data.createdAt is string &&
+             (!('floorAmount' in data) || data.floorAmount is number) &&
+             (!('scopeUnits' in data) || data.scopeUnits is number) &&
+             (!('actualHours' in data) || data.actualHours is number) &&
+             (!('verificationId' in data) || data.verificationId is string);
+    }
+
     function isValidMeeting(data) {
-      return data.keys().hasAll(['title', 'meetingUri', 'meetingCode', 'status', 'createdAt']) &&
+      return data.keys().hasAll(['title', 'meetingUri', 'meetingCode', 'status', 'createdAt', 'hostUid']) &&
              data.title is string && data.title.size() <= 200 &&
              data.meetingUri is string &&
              data.meetingCode is string &&
+             data.hostUid is string &&
              data.status in ['scheduled', 'live', 'completed', 'cancelled'] &&
              data.createdAt is string;
     }
 
     function isValidAuditLog(data) {
-      return data.keys().hasAll(['action', 'timestamp']) &&
+      return data.keys().hasAll(['action', 'timestamp', 'actorUid']) &&
              data.action is string &&
-             data.timestamp is string;
+             data.timestamp is string &&
+             data.actorUid is string;
     }
 
-    // Rules
+    function isMeetingParticipant() {
+      return isAuthenticated() && (
+        resource.data.hostUid == request.auth.uid ||
+        (('participantUids' in resource.data) && request.auth.uid in resource.data.participantUids)
+      );
+    }
+
     match /users/{userId} {
       allow read: if isOwner(userId) || hasPermission('manageRoles');
-      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (isOwner(userId) || hasPermission('manageRoles'));
-      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (hasPermission('manageRoles') || (isOwner(userId) && request.resource.data.role == resource.data.role));
+      allow create: if isAuthenticated() && isValidUser(request.resource.data) && (
+                      hasPermission('manageRoles') ||
+                      (isOwner(userId) && request.resource.data.role == 'client')
+                    );
+      allow update: if isAuthenticated() && isValidUser(request.resource.data) && (
+                      hasPermission('manageRoles') ||
+                      (isOwner(userId) && request.resource.data.role == resource.data.role)
+                    );
+      allow delete: if hasPermission('manageRoles');
     }
 
     match /roles/{roleId} {
@@ -227,15 +252,15 @@ service cloud.firestore {
     match /sows/{sowId} {
       allow read: if hasPermission('manageSOWs') || (isAuthenticated() && resource.data.clientUid == request.auth.uid);
       allow create: if hasPermission('manageSOWs') && isValidSOW(request.resource.data);
-      allow update: if (hasPermission('manageSOWs') && isValidSOW(request.resource.data)) || 
-                     (isAuthenticated() && resource.data.clientUid == request.auth.uid && 
+      allow update: if (hasPermission('manageSOWs') && isValidSOW(request.resource.data)) ||
+                     (isAuthenticated() && resource.data.clientUid == request.auth.uid &&
                       request.resource.data.diff(resource.data).affectedKeys().hasOnly(['signature', 'signedAt', 'status']) &&
                       request.resource.data.status == 'signed');
       allow delete: if hasPermission('manageSOWs');
     }
 
     match /sowTemplates/{templateId} {
-      allow read: if isAuthenticated();
+      allow read: if hasPermission('manageSOWs');
       allow create, update, delete: if hasPermission('manageSOWs') && isValidSOWTemplate(request.resource.data);
     }
 
@@ -247,70 +272,96 @@ service cloud.firestore {
     }
 
     match /proposalTemplates/{templateId} {
-      allow read: if isAuthenticated();
+      allow read: if hasPermission('manageProposals');
       allow create, update, delete: if hasPermission('manageProposals') && isValidProposalTemplate(request.resource.data);
     }
 
     match /notifications/{notificationId} {
       allow read: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
-      allow create: if isAuthenticated() && isValidNotification(request.resource.data);
+      allow create: if isAuthenticated() && isValidNotification(request.resource.data) && (
+                      request.resource.data.userId == request.auth.uid || isAdmin()
+                    );
       allow update: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin()) && isValidNotification(request.resource.data);
       allow delete: if isAuthenticated() && (resource.data.userId == request.auth.uid || isAdmin());
     }
 
     match /engagements/{engagementId} {
-      allow read: if isAuthenticated() && (resource.data.clientUid == request.auth.uid || isAdmin() || hasPermission('manageProposals') || hasPermission('manageSOWs'));
-      allow create: if isAuthenticated() && isValidEngagement(request.resource.data);
-      allow update: if isAuthenticated() && isValidEngagement(request.resource.data) && (resource.data.clientUid == request.auth.uid || isAdmin() || hasPermission('manageProposals'));
+      allow read: if isAuthenticated() && (resource.data.clientUid == request.auth.uid || isOperator() || hasPermission('manageProposals') || hasPermission('manageSOWs'));
+      allow create: if isAuthenticated() && isValidEngagement(request.resource.data) && (
+                      request.resource.data.clientUid == request.auth.uid || isOperator()
+                    );
+      allow update: if isAuthenticated() && isValidEngagement(request.resource.data) && (
+                      resource.data.clientUid == request.auth.uid || isOperator() || hasPermission('manageProposals')
+                    );
       allow delete: if isAdmin() || hasPermission('manageProposals');
     }
 
     match /objection_patterns/{objectionId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidObjection(request.resource.data);
+      allow read: if isOperator();
+      allow create, update: if isOperator() && isValidObjection(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /build_runs/{buildRunId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidBuildRun(request.resource.data);
+      allow read: if isOperator();
+      allow create, update: if isOperator() && isValidBuildRun(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /corpus_adapters/{adapterId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidCorpusAdapter(request.resource.data);
+      allow read: if isOperator();
+      allow create, update: if isOperator() && isValidCorpusAdapter(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /fixtures/{fixtureId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidFixture(request.resource.data);
+      allow read: if isOperator();
+      allow create, update: if isOperator() && isValidFixture(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /verifications/{verificationId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidVerification(request.resource.data);
-      allow delete: if isAdmin();
+      allow read: if isOperator() || (
+                    isAuthenticated() &&
+                    exists(/databases/$(database)/documents/engagements/$(resource.data.contractId)) &&
+                    get(/databases/$(database)/documents/engagements/$(resource.data.contractId)).data.clientUid == request.auth.uid
+                  );
+      allow create: if isOperator() && isValidVerification(request.resource.data);
+      allow update: if false;
+      allow delete: if false;
     }
 
     match /error_remedies/{remedyId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidErrorRemedy(request.resource.data);
+      allow read: if isOperator();
+      allow create, update: if isOperator() && isValidErrorRemedy(request.resource.data);
+      allow delete: if isAdmin();
+    }
+
+    match /estimates/{estimateId} {
+      allow read: if isOperator();
+      allow create, update: if isOperator() && isValidEstimate(request.resource.data);
       allow delete: if isAdmin();
     }
 
     match /meetings/{meetingId} {
-      allow read: if isAuthenticated();
-      allow create, update: if isAuthenticated() && isValidMeeting(request.resource.data);
+      allow read: if isOperator() || isMeetingParticipant();
+      allow create: if isAuthenticated() && isValidMeeting(request.resource.data) && (
+                      request.resource.data.hostUid == request.auth.uid || isOperator()
+                    );
+      allow update: if isValidMeeting(request.resource.data) && (isOperator() || isMeetingParticipant());
       allow delete: if isAdmin() || (isAuthenticated() && resource.data.hostUid == request.auth.uid);
     }
 
     match /audit_logs/{auditId} {
-      allow read: if isAuthenticated();
-      allow create: if isAuthenticated() && isValidAuditLog(request.resource.data);
-      allow update, delete: if isAdmin();
+      allow read: if isOperator();
+      allow create: if isAuthenticated() && isValidAuditLog(request.resource.data) &&
+                       request.resource.data.actorUid == request.auth.uid;
+      allow update: if false;
+      allow delete: if false;
+    }
+
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
